@@ -1,0 +1,87 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+
+:root {
+  --bg: #14171a;
+  --panel: #1d2126;
+  --beige: #d6cfc0;        /* 90s case plastic */
+  --beige-dark: #b8b0a0;
+  --amber: #ffb000;
+  --amber-dim: #7a5a10;
+  --text: #cdd3d8;
+  --dim: #6a7480;
+}
+
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: ui-monospace, "Cascadia Mono", Menlo, monospace;
+  min-height: 100vh; display: flex; flex-direction: column;
+}
+header { padding: 0.8rem 1.2rem; }
+h1 { font-size: 1.05rem; margin: 0; color: var(--amber); font-weight: 600; }
+.dim { color: var(--dim); font-weight: 400; }
+a { color: #7abaff; }
+code { color: var(--amber); }
+
+.bench {
+  flex: 1; display: flex; flex-wrap: wrap; gap: 2rem;
+  align-items: flex-start; justify-content: center; padding: 1rem 1.5rem 2rem;
+}
+.caption { max-width: 34rem; color: var(--dim); font-size: 0.78rem; line-height: 1.5; }
+
+/* ---- the RISC PC ---- */
+.machine { display: flex; flex-direction: column; align-items: center; }
+.monitor {
+  background: var(--beige); border-radius: 10px 10px 6px 6px;
+  padding: 14px 14px 8px; box-shadow: inset 0 -3px 6px rgba(0,0,0,.25);
+}
+.crt {
+  width: 300px; height: 225px; background: #0a0c0d; border-radius: 6px;
+  border: 3px solid #333; display: flex; align-items: center; justify-content: center;
+  box-shadow: inset 0 0 30px rgba(0,0,0,.9);
+}
+.crt canvas { width: 100%; height: 100%; }        /* Phase 2: VIDC20 output */
+.nosignal { color: #263038; font-size: 0.8rem; letter-spacing: 0.3em; animation: drift 6s ease-in-out infinite alternate; }
+@keyframes drift { from { opacity: .5 } to { opacity: 1 } }
+.monitor-foot { width: 120px; height: 12px; margin: 0 auto; background: var(--beige-dark); border-radius: 0 0 6px 6px; }
+
+.case {
+  margin-top: 14px; width: 360px; height: 64px; background: var(--beige);
+  border-radius: 6px; position: relative;
+  box-shadow: inset 0 -4px 8px rgba(0,0,0,.3), 0 3px 8px rgba(0,0,0,.4);
+}
+.badge {
+  position: absolute; left: 12px; top: 8px; font-size: 0.6rem;
+  color: #555; letter-spacing: .12em; border: 1px solid #999; padding: 1px 5px; border-radius: 2px;
+}
+.floppy-slot {
+  position: absolute; left: 12px; bottom: 10px; width: 110px; height: 8px;
+  background: #222; border-radius: 2px; box-shadow: inset 0 1px 2px #000;
+}
+.controls { position: absolute; right: 12px; top: 0; height: 100%; display: flex; align-items: center; gap: 10px; }
+.led { width: 9px; height: 9px; border-radius: 50%; background: #3a2; background: #442; box-shadow: none; transition: all .3s; }
+.led.on { background: #5f5; box-shadow: 0 0 8px #5f5; }
+.led.busy { background: var(--amber); box-shadow: 0 0 8px var(--amber); }
+#power {
+  font: inherit; font-size: 0.65rem; letter-spacing: .1em;
+  background: var(--beige-dark); color: #333; border: 1px solid #888;
+  border-bottom-width: 3px; border-radius: 4px; padding: 6px 12px; cursor: pointer;
+}
+#power:active { border-bottom-width: 1px; transform: translateY(2px); }
+#power:disabled { opacity: .55; cursor: default; }
+
+/* ---- the terminal ---- */
+.vt { display: flex; flex-direction: column; align-items: center; }
+.vt-bezel {
+  background: #2e2a26; border-radius: 14px; padding: 22px;
+  box-shadow: inset 0 0 10px rgba(0,0,0,.7), 0 4px 14px rgba(0,0,0,.5);
+  border: 1px solid #45403a;
+}
+#terminal { width: 640px; max-width: 82vw; }
+
+/* xterm amber phosphor: colors are set in app.js; glass curvature hint */
+.vt-bezel .xterm { padding: 6px; background: #100c04; border-radius: 6px; }
+
+footer { padding: 0.7rem 1.2rem; font-size: 0.72rem; color: var(--dim); }
+
+@media (max-width: 1100px) { .bench { flex-direction: column; align-items: center; } }

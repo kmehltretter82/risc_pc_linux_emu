@@ -3,3 +3,4 @@ _site/
 node_modules/
 build/deps/
 build/out/
+build/*.log

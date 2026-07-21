@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
 // Milestone A harness: boot the wasm QEMU under node, outside any browser.
-// Usage: node build/run-node.mjs [assets-dir]
+// Usage: node build/run-node.mjs [assets-dir] [kernel-file]
 //
 // The generated loader is an ES module exporting a factory, so this is an
 // .mjs and imports it. Assets are read from disk and written into MEMFS,
@@ -21,6 +21,7 @@ const require = createRequire(import.meta.url);
 const { openpty } = require(path.join(here, "..", "frontend", "vendor", "xterm-pty.js"));
 
 const assetsDir = path.resolve(process.argv[2] || path.join(here, "..", "assets"));
+const kernelFile = process.argv[3] || "zImage";
 const qemuJs = path.join(here, "out", "qemu-system-arm.js");
 
 const { master, slave } = openpty();
@@ -51,9 +52,10 @@ const moduleArg = {
   preRun: [
     () => {
       moduleArg.FS.mkdir("/assets");
-      for (const f of ["zImage", "initramfs-busybox.cpio.gz"]) {
-        moduleArg.FS.writeFile(`/assets/${f}`, fs.readFileSync(path.join(assetsDir, f)));
-      }
+      moduleArg.FS.writeFile("/assets/zImage",
+        fs.readFileSync(path.join(assetsDir, kernelFile)));
+      moduleArg.FS.writeFile("/assets/initramfs-busybox.cpio.gz",
+        fs.readFileSync(path.join(assetsDir, "initramfs-busybox.cpio.gz")));
     },
   ],
   printErr: (t) => process.stderr.write(t + "\n"),
@@ -63,6 +65,6 @@ const moduleArg = {
   },
 };
 
-process.stderr.write(`[harness] assets=${assetsDir}\n`);
+process.stderr.write(`[harness] assets=${assetsDir} kernel=${kernelFile}\n`);
 const createQemu = (await import(pathToFileURL(qemuJs).href)).default;
 await createQemu(moduleArg);

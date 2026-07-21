@@ -8,9 +8,10 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 
 ## Status
 
-**It boots, and you can type at it.** Press POWER and a 1994 Acorn RISC PC runs
-Linux 7.2-rc4 in your browser tab — real QEMU, real ARMv4 emulation, no server,
-interactive shell.
+**It boots, and you can type at it.** Select a removable boot module, press
+POWER, and a 1994 Acorn RISC PC runs either the current patched Linux 7.2-rc4
+or stable Linux 7.1.4 in your browser tab — real QEMU, real ARMv4 emulation, no
+server, interactive shell.
 
 See [PLAN.md](PLAN.md) for the full roadmap:
 
@@ -26,7 +27,7 @@ See [PLAN.md](PLAN.md) for the full roadmap:
 | Path | Contents |
 |---|---|
 | `frontend/` | the static page (art, xterm.js glue, coi-serviceworker) |
-| `assets/` | prebuilt boot binaries + provenance ([assets/README.md](assets/README.md)) |
+| `assets/` | two selectable prebuilt kernels, userspace, emulator + provenance ([assets/README.md](assets/README.md)) |
 | `build/` | Emscripten build recipes for QEMU and its dependencies |
 | `qemu/` | submodule → [kmehltretter82/qemu](https://github.com/kmehltretter82/qemu) branch `armv4-boards` (the RiscPC machine model) |
 | `linux/` | submodule → [kmehltretter82/linux](https://github.com/kmehltretter82/linux) branch `riscpc-emu` (v7.2-rc4 + RiscPC-found fixes) |

@@ -25,9 +25,32 @@
       <div class="floppy-slot" title="Floppy drive — Phase 3"></div>
       <div class="controls">
         <span class="led" id="power-led"></span>
-        <button id="power" title="Power on">POWER</button>
+        <button id="power" title="Power on" aria-pressed="false">POWER</button>
       </div>
     </div>
+    <fieldset class="kernel-tray" id="kernel-selector" aria-describedby="kernel-help">
+      <legend>BOOT MODULE TRAY</legend>
+      <div class="kernel-chips">
+        <label class="kernel-chip" for="kernel-current">
+          <input type="radio" id="kernel-current" name="kernel" value="current" checked>
+          <span class="kernel-chip-body">
+            <strong>Linux 7.2-rc4+</strong>
+            <small>CURRENT · 3 RISC PC FIXES</small>
+          </span>
+        </label>
+        <label class="kernel-chip" for="kernel-stable">
+          <input type="radio" id="kernel-stable" name="kernel" value="stable">
+          <span class="kernel-chip-body">
+            <strong>Linux 7.1.4</strong>
+            <small>STABLE · 1 BUILD BACKPORT</small>
+          </span>
+        </label>
+      </div>
+      <p class="kernel-help" id="kernel-help">
+        <span id="kernel-selection" aria-live="polite"></span>
+        QEMU direct-loads the selected image; the removable modules are the selector.
+      </p>
+    </fieldset>
     <p class="caption" id="machine-caption">VIDC20 not modelled yet — the monitor
     stays dark. The serial port is alive: watch the terminal.</p>
   </section>
@@ -44,7 +67,9 @@
 
 <footer>
   <a href="https://github.com/kmehltretter82/risc_pc_linux_emu">source</a> ·
-  kernel: <a href="https://github.com/kmehltretter82/linux/tree/riscpc-emu">v7.2-rc4+fixes</a> ·
+  kernels:
+  <a href="https://github.com/kmehltretter82/linux/tree/riscpc-emu">v7.2-rc4+fixes</a> /
+  <a href="https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/tag/?h=v7.1.4">v7.1.4 stable</a> ·
   emulator: <a href="https://github.com/kmehltretter82/qemu/tree/armv4-boards">QEMU armv4-boards</a> ·
   GPL-2.0
 </footer>

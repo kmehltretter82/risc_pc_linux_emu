@@ -24,7 +24,7 @@ a { color: #7abaff; }
 code { color: var(--amber); }
 
 .bench {
-  flex: 1; display: flex; flex-wrap: wrap; gap: 2rem;
+  flex: 1; display: flex; flex-wrap: wrap; gap: 1rem;
   align-items: flex-start; justify-content: center; padding: 1rem 1.5rem 2rem;
 }
 .caption { max-width: 34rem; color: var(--dim); font-size: 0.78rem; line-height: 1.5; }
@@ -69,6 +69,53 @@ code { color: var(--amber); }
 }
 #power:active { border-bottom-width: 1px; transform: translateY(2px); }
 #power:disabled { opacity: .55; cursor: default; }
+
+/* Removable boot modules: visually EEPROM/flash packages, functionally a
+   selector for QEMU's direct -kernel loading. */
+.kernel-tray {
+  margin: 17px 0 0; padding: 0.45rem 0.55rem 0.5rem; width: 360px;
+  min-inline-size: 0; color: #aaa298; background: linear-gradient(#332d27, #211d19);
+  border: 1px solid #5c5147; border-radius: 5px;
+  box-shadow: inset 0 1px 5px rgba(0,0,0,.75), 0 2px 5px rgba(0,0,0,.35);
+}
+.kernel-tray legend {
+  padding: 0 .4rem; color: #8e8479; font-size: .56rem; letter-spacing: .16em;
+}
+.kernel-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 5px 6px; }
+.kernel-chip { display: block; cursor: pointer; }
+.kernel-chip input {
+  position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+}
+.kernel-chip-body {
+  position: relative; display: flex; min-height: 58px; padding: 10px 8px 8px;
+  flex-direction: column; align-items: center; justify-content: center; gap: 5px;
+  color: #bbb; text-align: center; border: 1px solid #080808; border-radius: 3px;
+  background:
+    radial-gradient(circle at 50% 0, #2b2621 0 6px, transparent 6.5px),
+    linear-gradient(145deg, #303030, #111 68%);
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.12), 0 2px 3px rgba(0,0,0,.65);
+  transition: border-color .15s, box-shadow .15s, color .15s;
+}
+.kernel-chip-body::before, .kernel-chip-body::after {
+  content: ""; position: absolute; left: 7px; right: 7px; height: 6px;
+  background: repeating-linear-gradient(90deg, #a9a59b 0 4px, transparent 4px 11px);
+}
+.kernel-chip-body::before { top: -6px; }
+.kernel-chip-body::after { bottom: -6px; }
+.kernel-chip strong { font-size: .72rem; font-weight: 600; letter-spacing: .02em; }
+.kernel-chip small { color: #777; font-size: .48rem; line-height: 1.25; letter-spacing: .06em; }
+.kernel-chip input:checked + .kernel-chip-body {
+  color: var(--amber); border-color: #ba8515;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.12), 0 0 9px rgba(255,176,0,.35);
+}
+.kernel-chip input:checked + .kernel-chip-body small { color: #b07e18; }
+.kernel-chip input:focus-visible + .kernel-chip-body { outline: 2px solid #7abaff; outline-offset: 3px; }
+.kernel-tray:disabled .kernel-chip { cursor: default; }
+.kernel-tray:disabled .kernel-chip-body { opacity: .58; }
+.kernel-help {
+  margin: 5px 5px 0; color: #786e64; font-size: .53rem; line-height: 1.4; text-align: center;
+}
+#kernel-selection { display: block; margin-bottom: 2px; color: #a59684; }
 
 /* ---- the terminal ---- */
 .vt { display: flex; flex-direction: column; align-items: center; }

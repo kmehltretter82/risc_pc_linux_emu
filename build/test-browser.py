@@ -30,11 +30,18 @@ def main():
         # A first-time visitor to GitHub Pages arrives without COOP/COEP:
         # coi-serviceworker registers itself and reloads the page. Wait that
         # out rather than clicking into a non-isolated context.
+        def isolated_now():
+            # The reload can land mid-call and destroy the execution context.
+            try:
+                return bool(page.evaluate("self.crossOriginIsolated"))
+            except Exception:
+                return False
+
         for _ in range(20):
-            if page.evaluate("self.crossOriginIsolated"):
+            if isolated_now():
                 break
             page.wait_for_timeout(1000)
-        isolated = page.evaluate("self.crossOriginIsolated")
+        isolated = isolated_now()
         print(f"crossOriginIsolated={isolated}")
         if not isolated:
             print("RESULT: FAIL (never became cross-origin isolated)")

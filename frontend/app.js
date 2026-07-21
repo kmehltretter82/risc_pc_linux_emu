@@ -8,7 +8,8 @@ const ASSETS = {
   kernel: "assets/zImage",
   initrd: "assets/initramfs-busybox.cpio.gz",
 };
-const QEMU_JS = "qemu/qemu-system-arm.js";   // produced by build/build-qemu.sh
+// Prebuilt by build/build-qemu.sh; provenance in assets/README.md.
+const QEMU_JS = "assets/qemu/qemu-system-arm.js";
 
 // QEMU argv. -serial stdio is picked up by emscripten as the module's stdout,
 // which is proxied from the worker running main() back to this thread.

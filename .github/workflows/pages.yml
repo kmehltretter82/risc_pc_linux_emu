@@ -15,81 +15,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  # Builds QEMU to WebAssembly inside emscripten's own image, the same one
-  # QEMU's emsdk-wasm64-cross.docker is based on. Cached on the qemu submodule
-  # commit plus the build scripts, so ordinary frontend pushes skip it.
-  wasm:
-    runs-on: ubuntu-latest
-    container: emscripten/emsdk:4.0.10
-    timeout-minutes: 150
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Cache key inputs
-        id: key
-        run: |
-          echo "qemu=$(git ls-tree HEAD qemu --object-only)" >> "$GITHUB_OUTPUT"
-          echo "scripts=$(cat build/*.sh build/emscripten-pty.js | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
-
-      - uses: actions/cache@v4
-        id: cache
-        with:
-          path: |
-            build/deps/target
-            build/out
-          key: wasm-${{ steps.key.outputs.qemu }}-${{ steps.key.outputs.scripts }}
-
-      # Fetch just the pinned QEMU commit. A recursive submodule checkout drags
-      # in QEMU's full history and its own submodules (roms, edk2, ...), which
-      # is gigabytes we never build.
-      - name: Fetch QEMU at pinned commit
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          git clone --no-checkout --filter=blob:none \
-            https://github.com/kmehltretter82/qemu.git qemu
-          git -C qemu fetch --depth 1 origin ${{ steps.key.outputs.qemu }}
-          git -C qemu checkout ${{ steps.key.outputs.qemu }}
-
-      # The emsdk image ships curl/git/python3 but not python3-venv or
-      # xz-utils, and build-deps.sh untars .tar.xz (tar -J shells out to xz).
-      - name: Host build prerequisites
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: |
-          apt-get update
-          apt-get install -y ninja-build python3-venv pkgconf bison flex xz-utils
-
-      - name: Build dependencies
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: EMSDK_ROOT=/emsdk ./build/build-deps.sh
-
-      - name: Build QEMU
-        if: steps.cache.outputs.cache-hit != 'true'
-        run: EMSDK_ROOT=/emsdk ./build/build-qemu.sh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: qemu-wasm
-          path: |
-            build/out/qemu-system-arm.js
-            build/out/qemu-system-arm.wasm
-          if-no-files-found: error
-
-  # Gate: the site must actually boot the guest to userspace, not merely load.
+  # The emulator ships prebuilt in assets/qemu/ (see assets/README.md for its
+  # source commit and how to regenerate it) - building it here takes over two
+  # hours on a 2-core runner and it changes only when the machine model does.
+  # What CI does enforce is that whatever is committed actually boots.
   verify:
-    needs: wasm
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          name: qemu-wasm
-          path: _site/qemu
       - name: Assemble site
         run: |
-          mkdir -p _site/assets
+          mkdir -p _site
           cp -r frontend/. _site/
-          cp assets/zImage assets/initramfs-busybox.cpio.gz _site/assets/
+          cp -r assets _site/assets
       # venv because the runner's python is externally managed (PEP 668).
       - name: Install browser
         run: |
@@ -117,16 +56,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
-      - uses: actions/download-artifact@v4
-        with:
-          name: qemu-wasm
-          path: _site/qemu
       - name: Assemble site
         run: |
-          mkdir -p _site/assets
+          mkdir -p _site
           cp -r frontend/. _site/
-          cp assets/zImage assets/initramfs-busybox.cpio.gz _site/assets/
-          ls -lh _site _site/qemu _site/assets
+          cp -r assets _site/assets
+          du -sh _site && ls _site _site/assets/qemu
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

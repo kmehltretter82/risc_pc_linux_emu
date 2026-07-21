@@ -18,7 +18,12 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 | Rootfs | `~/linux-work/armv4-rootfs/` (tree), `armv4-rootfs.img` (32 MB ext2) | BusyBox userspace; cpio initramfs buildable from the tree |
 | Boot convention | in the fork's `hw/arm/boot` changes | old-param/NeTTrom-era parameter block; direct `-kernel` boot — **no RISC OS ROM needed** (sidesteps copyright entirely) |
 | Test matrix | `~/linux-work/armv4-boards-test.sh` | 7/7 boot matrix incl. riscpc; use before every deploy |
-| Guest drivers (all still in mainline 7.2) | `acornfb` (VIDC20 fb), `rpckbd` (PS/2 kbd via IOMD), `rpcmouse` (quadrature) | needed for Phase 2 — guest side is already done, only QEMU models are missing |
+| Guest drivers in mainline 7.2 | `acornfb` (VIDC20 fb), `rpcmouse` (quadrature), `rpckbd` (KART serio) | All three present. `rpckbd` lives in **`drivers/input/serio/`**, not `drivers/input/keyboard/`, under `CONFIG_SERIO_RPCKBD`; `atkbd` binds on top of it. The booted kernel already probes it and reports `keyboard reset failed on rpckbd/serio0` — so a KART model has a waiting client |
+| VIDC20 datasheet | `~/linux-work/docs/vidc20-datasheet.pdf` | Acorn/GEC Plessey, Feb 1995, 69 pp, **has a text layer**. §4.1 is the register allocation; its §6.0 on p33 is the one `mach/acornfb.h` cites. **This is the specification** |
+| RPCEmu | `~/linux-work/rpcemu/src/vidc20.c` | Independent implementation written against RISC OS. Documents field masks (`HDSR/HDER & 0x3ffe`, `VDSR/VDER & 0x1fff`) and rejects writes with reserved bits set |
+| NetBSD/acorn32 | `~/linux-work/netbsd-acorn32/` | 10.1 GENERIC kernel (ELF32 ARM, entry 0xf0000000) + `vidc20config.c`, `vidc.h`, `bootconfig.h`, `rpc_machdep.c`. Second independent VIDC20 driver, **with a serial console** |
+| Debian RiscPC kernels | `~/linux-work/armv4-images/riscpc/` | 2.2.19 / 2.4.16 / 2.4.27, `CONFIG_FB_ACORN=y`, `CONFIG_RPCMOUSE=y`. Frozen 2004 artifacts — cannot have been influenced by this emulator |
+| RiscPC TRM | `~/linux-work/docs/riscpc-trm.pdf` | 112 pp, but a **scan** — no usable text layer. Needs poppler to render pages as images |
 
 Prior art to lean on: **ktock/qemu-wasm** (Emscripten build recipes, Dockerfiles for
 dependency cross-builds, browser glue examples). Upstream QEMU has experimental
@@ -132,19 +137,111 @@ Three things worth knowing before touching the build:
   — full-screen programs and window resizing will not behave until something
   like the xterm-pty path works under a proxied main.
 
-## Phase 2 — The machine gets its own screen and keyboard (1–2 weeks)
+## Phase 2 — The machine gets its own screen (2–3 weeks)
 
-New QEMU device models on `armv4-boards` (guest drivers already exist in mainline):
+### Method: the datasheet is the spec, not any driver
 
-- [ ] **VIDC20 framebuffer** → guest `acornfb`/fbcon. Palette + mode timing regs +
-      video DMA from IOMD. The money shot: Tux logo on a VIDC20 that never met a
-      2026 kernel. Monitor artwork lights up as a live canvas.
-- [ ] **IOMD PS/2 keyboard** (KART regs) → guest `rpckbd`. Reuse QEMU's ps2 core.
-- [ ] **Quadrature mouse** (IOMD counters + button bits) → guest `rpcmouse`.
-- [ ] Frontend: draw the RiscPC's own keyboard below the monitor; input routing by
-      focus (terminal→UART, monitor→PS/2). Both consoles live simultaneously,
-      like a real bring-up bench.
-- [ ] Native regression: extend `armv4-boards-test.sh` with a framebuffer smoke test.
+The whole point of this emulator is finding mach-rpc bugs (Phase 4, and the
+floppy reproducer in Phase 3). An emulator tuned until `acornfb` is happy can
+never again *falsify* `acornfb` — it becomes a mirror of one driver's
+assumptions. So:
+
+1. **Write each register from `docs/vidc20-datasheet.pdf` §4.1.** Never infer
+   semantics from what a driver happens to write.
+2. **Cross-check against two independent implementations** before trusting a
+   reading: RPCEmu (written against RISC OS) and NetBSD `vidc20config.c`.
+   Worked example: both `acornfb` and NetBSD subtract **18** when computing
+   HDSR (`acornfb.c:124`, `vidc20config.c:486`) — two unrelated codebases
+   agreeing makes that a real pipeline delay, not a Linux quirk.
+3. **Record disagreements, don't absorb them.** Where datasheet-faithful
+   behaviour makes a guest misbehave, that is a candidate guest bug and a
+   Phase 4 patch — not something to paper over in the model.
+
+Oracles, weakest to strongest independence: mainline `acornfb` (fast loop) →
+Debian 2.2/2.4 (frozen 2004 binaries) → **NetBSD/acorn32** (independent driver
+*and* a serial console) → RISC OS (fully independent, but silent when it fails).
+
+### 2a. Boot NetBSD/acorn32 — the primary target
+
+NetBSD is target #1 because it is an independent VIDC20 driver that still
+prints to `ttyS0`. RISC OS is *not* a prerequisite — `!BtNetBSD` is only a
+bootloader — but it is **not** a plain `-kernel` load either.
+
+**The kernel must be entered with the MMU already on.** `start` (0xf0000000)
+zeroes BSS and loads `sp` from absolute `0xf03f….` virtual addresses and
+contains no `mcr p15` in its first 4 KB; RAM is physically at 0x10000000.
+BtNetBSD gets this for free by running under RISC OS, whose MMU is already
+enabled. `initarm()` builds the kernel's *final* tables — by then it is
+already running mapped. QEMU must therefore supply the initial mapping:
+
+- [ ] Build an L1 section table in guest RAM: kernel VA `0xf0000000` → load
+      PA, plus **identity-mapped I/O** (`initarm` dereferences
+      `VIDC_HW_BASE 0x03400000` and `IOMD_HW_BASE` raw — `vidc_machdep.h:54`).
+- [ ] Entry stub: set TTBR0 + DACR, enable MMU, `r0` = bootconfig VA, jump to
+      0xf0000000. Precedent: the blobs in `hw/arm/boot.c`.
+- [ ] Synthesize `struct bootconfig` (magic `0x43112233`, v2): `dram[]`,
+      `pagesize`, `kernelname`, `args`. The `display_*` fields wait for 2b.
+- [ ] Load `netbsd-GENERIC` (ELF32, one LOAD segment, vaddr==paddr==
+      0xf0000000 — so the ELF paddr is a *virtual* address; do not honour it
+      literally when placing the image).
+- [ ] Definition of done: NetBSD reaches its serial console.
+
+Estimate: days, not hours. This is the riskiest item in Phase 2 — it is the
+one piece with no working reference in-tree.
+
+**Status: working.** NetBSD 10.1 GENERIC prints its banner, sizes memory
+(65536 KB / 58488 KB avail) and attaches `mainbus0`.
+
+**Finding #1 (candidate NetBSD bug), open.** `cpu_attach` then drops to
+`ddb` on an undefined instruction:
+
+    f0017118:  mrc 15, 0, r3, cr1, cr0, {1}   ; ACTLR    - ARMv6+
+    f0017120:  mrc 15, 0, r3, cr0, cr0, {6}   ; ID_MMFR2 - ARMv7
+
+Both reads are unconditional, on an ARMv4 core that has neither register.
+These accesses are UNPREDICTABLE on SA-110, so QEMU is *permitted* to take
+the undefined-instruction trap; real silicon most likely ignores `opc2` and
+returns the control register. Do **not** silence this by making the SA-110
+model RAZ — that would fit the CPU to one guest and destroy the ability to
+find this class of bug. Resolve it from the SA-110 datasheet, then either
+patch NetBSD or implement the register with a written justification.
+Nothing in mainline Linux reads either register, which is why only an
+independent guest surfaced it.
+
+### 2b. VIDC20 framebuffer
+
+- [ ] New `hw/display/vidc20.c`: single write port at `0x03400000`, register
+      selected by bits 31..24. Palette (28-bit: R 0-7, G 8-15, B 16-23,
+      Ext 24-27), HDSR/HDER/VDSR/VDER geometry, CONREG bpp at bits 5-7.
+      Draw via `framebuffer.c` from **main DRAM** — with `-kernel` boot
+      `vram_size` is 0, so `acornfb` allocates via `dma_alloc_wc` and no VRAM
+      model is needed.
+- [ ] IOMD video DMA: `VIDSTART` 0x1D8, `VIDEND` 0x1D4, `VIDINIT` 0x1DC,
+      `VIDCR` 0x1E0. Values already land in `regs[]`; add an accessor.
+      Open question for the datasheet: `acornfb.c:568-579` writes an *address*
+      into `VIDEND` despite naming it `size`, and `VIDCR` gets
+      `DMA_CR_E|DMA_CR_D|16` whose D bit and count are undocumented in the
+      driver. Resolve from §4, not by fitting.
+- [ ] Cross-validate in order: NetBSD → mainline `acornfb` → Debian 2.4.27.
+      A model only one guest accepts is a model of that guest.
+
+### 2c. Input (after the screen works)
+
+- [ ] **Quadrature mouse** (IOMD `MOUSEX`/`MOUSEY` 0x0A0/0x0A4 + button bits)
+      → mainline `rpcmouse`, Debian `CONFIG_RPCMOUSE`, NetBSD.
+- [ ] **KART keyboard** (PS/2, per the TRM block diagram) → mainline
+      `rpckbd` (`drivers/input/serio/`, `CONFIG_SERIO_RPCKBD`) with `atkbd`
+      above it, plus NetBSD and RISC OS. Linux already probes the KART and
+      fails with `keyboard reset failed on rpckbd/serio0`, which is the
+      exact symptom a KART model should turn into a working keyboard.
+- [ ] Frontend: monitor becomes a live canvas; input routing by focus
+      (terminal→UART, monitor→PS/2), both consoles live at once.
+
+### 2d. Regression
+
+- [ ] Extend `armv4-boards-test.sh` with a framebuffer smoke test: boot, then
+      QEMU-monitor `screendump` to PPM and assert geometry + non-blank, so
+      "did it draw" is machine-checkable rather than eyeballed.
 
 ## Phase 3 — Storage UX: clickable drives (≈1 week)
 
@@ -179,8 +276,9 @@ New QEMU device models on `armv4-boards` (guest drivers already exist in mainlin
     support plus much higher hardware fidelity than Linux does (full VIDC20, IOMD
     timers/keyboard, podule probing). A real project of its own — Phase 2 hardware
     is the prerequisite. The era-authentic RISC OS 3.5–3.7 ROMs remain proprietary.
-  - **NetBSD/acorn32** — historic releases supported the RiscPC; would validate the
-    machine model against a second kernel.
+  - **NetBSD/acorn32** — *moved up to Phase 2a as the primary target.* Not
+    historic: acorn32 ships in the current **NetBSD 10.1** release. Remaining
+    Phase 4 work is only userland (install sets, disc images) once it boots.
   - **Debian sarge (2004)** — 2.4.27-riscpc kernels + installer already collected in
     `~/linux-work/armv4-images/riscpc/`; "install Debian from 2004 in your browser"
     is a fun museum piece and needs no new hardware beyond Phase 3 storage.
@@ -221,6 +319,6 @@ public commit it was built from. The site footer links every source repo.
 |---|---|
 | 0 scaffold | an evening |
 | 1 serial MVP | 2–4 focused days |
-| 2 screen+keyboard+mouse | 1–2 weeks |
+| 2 NetBSD boot + screen + input | 2–3 weeks |
 | 3 storage UX + floppy | ~1 week |
 | 4 ecosystem | ongoing |

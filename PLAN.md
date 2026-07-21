@@ -239,9 +239,23 @@ The chain is deterministic and involves no hardware behaviour at all:
    `psdiv == 1` branch and calls `setstatclockrate(stathz)`, i.e. with 0.
 4. `iomd_clock.c:219` — `count = TIMER_FREQUENCY / newhz;`, unguarded.
 
-Nothing here depends on the emulation: `stathz` is never derived from
-hardware, and our IOMD timers work (Linux drives timer0 happily). Real
-SA-110 silicon would panic identically on the first tick.
+Nothing here depends on the emulation, and no bootloader can be blamed
+either — worth spelling out, because "maybe RISC OS or !BtNetBSD sets
+`stathz`" is the obvious objection:
+
+* `stathz` is at 0xf0406688, symbol type **B** — `.bss`. `start` zeroes
+  0xf03f064c..0xf040fc88 *before* calling `initarm()`, so any value a
+  loader placed there is destroyed. `struct bootconfig` has no `stathz`
+  field.
+* The only functions referencing it in the shipped kernel are
+  `cpu_initclocks` and `sched_pstats`, and every access is `ldr`. There
+  is no store to that address. (Literal-pool search, so a lower bound —
+  but the BSS argument does not depend on it.)
+* Empirically the kernel prints `stathz = 0` at `cpu_initclocks`, after
+  all machine-dependent init.
+
+Our IOMD timers work — Linux drives timer0 happily. Real SA-110 silicon
+would panic identically on the first tick.
 
 Candidate fix for a Phase 4 patch — either guard `setstatclockrate()`
 against 0, or have acorn32 set `stathz` and claim IRQ_TIMER1 properly.

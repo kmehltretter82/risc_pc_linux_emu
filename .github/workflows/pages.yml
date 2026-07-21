@@ -15,7 +15,56 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Builds QEMU to WebAssembly inside emscripten's own image, the same one
+  # QEMU's emsdk-wasm64-cross.docker is based on. Cached on the qemu submodule
+  # commit plus the build scripts, so ordinary frontend pushes skip it.
+  wasm:
+    runs-on: ubuntu-latest
+    container: emscripten/emsdk:4.0.10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Cache key inputs
+        id: key
+        run: |
+          echo "qemu=$(git -C qemu rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "scripts=$(cat build/*.sh build/emscripten-pty.js | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/cache@v4
+        id: cache
+        with:
+          path: |
+            build/deps/target
+            build/out
+          key: wasm-${{ steps.key.outputs.qemu }}-${{ steps.key.outputs.scripts }}
+
+      - name: Host build prerequisites
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          apt-get update
+          apt-get install -y ninja-build python3-venv pkgconf bison flex
+
+      - name: Build dependencies
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: EMSDK_ROOT=/emsdk ./build/build-deps.sh
+
+      - name: Build QEMU
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: EMSDK_ROOT=/emsdk ./build/build-qemu.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: qemu-wasm
+          path: |
+            build/out/qemu-system-arm.js
+            build/out/qemu-system-arm.wasm
+          if-no-files-found: error
+
   deploy:
+    needs: wasm
     runs-on: ubuntu-latest
     environment:
       name: github-pages
@@ -23,13 +72,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+      - uses: actions/download-artifact@v4
         with:
-          enablement: true
+          name: qemu-wasm
+          path: _site/qemu
       - name: Assemble site
         run: |
           mkdir -p _site/assets
           cp -r frontend/. _site/
           cp assets/zImage assets/initramfs-busybox.cpio.gz _site/assets/
+          ls -lh _site _site/qemu _site/assets
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site

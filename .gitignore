@@ -4,3 +4,4 @@ node_modules/
 build/deps/
 build/out/
 build/*.log
+build/testvenv/

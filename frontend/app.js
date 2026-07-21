@@ -10,6 +10,17 @@ const ASSETS = {
 };
 const QEMU_JS = "qemu/qemu-system-arm.js";   // produced by build/build-qemu.sh
 
+// QEMU argv. -serial stdio is picked up by emscripten as the module's stdout,
+// which is proxied from the worker running main() back to this thread.
+const QEMU_ARGS = [
+  "-M", "riscpc",
+  "-kernel", "/assets/zImage",
+  "-initrd", "/assets/initramfs-busybox.cpio.gz",
+  "-append", "console=ttyS0 rdinit=/init",
+  "-serial", "stdio",
+  "-display", "none",
+];
+
 const term = new Terminal({
   cols: 80, rows: 24,
   fontFamily: 'ui-monospace, "Cascadia Mono", Menlo, monospace',
@@ -23,10 +34,14 @@ const term = new Terminal({
   },
 });
 term.open(document.getElementById("terminal"));
-banner();
+self.__term = term;   // handle for build/test-browser.py
 
 const powerBtn = document.getElementById("power");
 const led = document.getElementById("power-led");
+
+term.writeln("Acorn RISC PC 600 · serial console · 115200 8N1");
+term.writeln("");
+term.writeln("Machine is powered off. Press POWER.");
 
 powerBtn.addEventListener("click", async () => {
   powerBtn.disabled = true;
@@ -37,16 +52,10 @@ powerBtn.addEventListener("click", async () => {
     led.classList.add("on");
   } catch (err) {
     led.classList.remove("busy");
-    term.writeln(`\r\n\x1b[31mpower-on failed: ${err.message}\x1b[0m`);
+    term.writeln(`\r\n\x1b[31m${err.message}\x1b[0m`);
     powerBtn.disabled = false;
   }
 });
-
-function banner() {
-  term.writeln("Acorn RISC PC 600 · serial console · 115200 8N1");
-  term.writeln("");
-  term.writeln("Machine is powered off. Press POWER.");
-}
 
 async function fetchWithProgress(url, label) {
   const resp = await fetch(url);
@@ -71,31 +80,64 @@ async function fetchWithProgress(url, label) {
 }
 
 async function powerOn() {
-  if (!crossOriginIsolated) {
-    term.writeln("\r\n\x1b[33mwarning: not cross-origin isolated; " +
-                 "SharedArrayBuffer unavailable (coi-serviceworker should fix " +
-                 "this after one reload)\x1b[0m");
+  if (!self.crossOriginIsolated) {
+    throw new Error("not cross-origin isolated — SharedArrayBuffer is " +
+                    "unavailable. coi-serviceworker installs on first visit; " +
+                    "reload the page once and try again.");
   }
-  // Is the emulator deployed yet?
+
   const probe = await fetch(QEMU_JS, { method: "HEAD" });
   if (!probe.ok) {
     term.writeln("");
-    term.writeln("\x1b[33mThe WASM build of QEMU is not deployed yet " +
-                 "(Phase 1 in progress).\x1b[0m");
+    term.writeln("\x1b[33mThe WASM build of QEMU is not deployed yet.\x1b[0m");
     term.writeln("Follow along: github.com/kmehltretter82/risc_pc_linux_emu");
     throw new Error("emulator not deployed");
   }
 
   const kernel = await fetchWithProgress(ASSETS.kernel, "zImage");
   const initrd = await fetchWithProgress(ASSETS.initrd, "initramfs");
-  term.writeln("starting qemu-system-arm -M riscpc ...\r\n");
+  term.writeln("");
   await bootQemu(kernel, initrd);
 }
 
-// Wiring to the Emscripten module lands after Milestone A (kernel boots
-// under node). It will: place kernel/initrd into the module FS, start the
-// module with the canonical riscpc arguments, and bridge the serial
-// chardev to this terminal (term.onData -> UART rx, UART tx -> term.write).
 async function bootQemu(kernel, initrd) {
-  throw new Error("bootQemu: not wired yet (Milestone A pending)");
+  term.reset();
+  term.focus();
+
+  // QEMU's main() runs in a worker (-sPROXY_TO_PTHREAD), so the guest's
+  // console arrives here through emscripten's stdout proxying rather than
+  // through a pty. That is also why the console is currently read-only:
+  // see build/build-qemu.sh (XTERM_PTY) for the input story.
+  const write = (line) => term.write(line.replace(/\n/g, "\r\n") + "\r\n");
+
+  // The build is MODULARIZE'd and emits an ES module exporting a factory,
+  // so this is a dynamic import rather than a <script> tag.
+  const moduleArg = {
+    arguments: QEMU_ARGS,
+    print: write,
+    printErr: (line) => {
+      // emscripten's own diagnostics stay in devtools; guest output shows.
+      if (/^warning: unsupported syscall|^Blocking on the main thread/.test(line)) {
+        console.warn(line);
+      } else {
+        write(line);
+      }
+    },
+    preRun: [
+      () => {
+        moduleArg.FS.mkdir("/assets");
+        moduleArg.FS.writeFile("/assets/zImage", kernel);
+        moduleArg.FS.writeFile("/assets/initramfs-busybox.cpio.gz", initrd);
+      },
+    ],
+    onAbort: (what) => term.writeln(`\r\n\x1b[31m[abort] ${what}\x1b[0m`),
+    onExit: () => {
+      term.writeln("\r\n\x1b[33m[machine halted]\x1b[0m");
+      led.classList.remove("on");
+      powerBtn.disabled = false;
+    },
+  };
+
+  const { default: createQemu } = await import(new URL(QEMU_JS, location.href).href);
+  await createQemu(moduleArg);
 }

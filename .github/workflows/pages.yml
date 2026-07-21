@@ -86,15 +86,21 @@ jobs:
           mkdir -p _site/assets
           cp -r frontend/. _site/
           cp assets/zImage assets/initramfs-busybox.cpio.gz _site/assets/
+      # venv because the runner's python is externally managed (PEP 668).
       - name: Install browser
         run: |
-          pip install playwright
-          playwright install --with-deps chromium
-      - name: Boot the machine
+          python3 -m venv .venv
+          .venv/bin/pip install --quiet playwright
+          .venv/bin/playwright install --with-deps chromium
+      # Deliberately a plain server with no COOP/COEP, which is what GitHub
+      # Pages gives a first-time visitor: this exercises coi-serviceworker
+      # registering at scope / and reloading. build/serve.py sets the headers
+      # itself and would mask a broken service worker.
+      - name: Boot the machine and type at it
         run: |
-          python3 build/serve.py 8777 &
+          (cd _site && python3 -m http.server 8777) &
           for i in $(seq 30); do curl -sf http://localhost:8777/ >/dev/null && break; sleep 1; done
-          python3 build/test-browser.py http://localhost:8777/ 420
+          .venv/bin/python build/test-browser.py http://localhost:8777/ 420
 
   deploy:
     needs: verify

@@ -26,8 +26,20 @@ def main():
         page.on("pageerror", lambda e: console.append(f"[pageerror] {e}"))
 
         page.goto(URL, wait_until="load")
+
+        # A first-time visitor to GitHub Pages arrives without COOP/COEP:
+        # coi-serviceworker registers itself and reloads the page. Wait that
+        # out rather than clicking into a non-isolated context.
+        for _ in range(20):
+            if page.evaluate("self.crossOriginIsolated"):
+                break
+            page.wait_for_timeout(1000)
         isolated = page.evaluate("self.crossOriginIsolated")
         print(f"crossOriginIsolated={isolated}")
+        if not isolated:
+            print("RESULT: FAIL (never became cross-origin isolated)")
+            browser.close()
+            return 1
 
         page.click("#power")
 

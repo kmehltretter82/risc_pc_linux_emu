@@ -49,11 +49,13 @@ jobs:
           git -C qemu fetch --depth 1 origin ${{ steps.key.outputs.qemu }}
           git -C qemu checkout ${{ steps.key.outputs.qemu }}
 
+      # The emsdk image ships curl/git/python3 but not python3-venv or
+      # xz-utils, and build-deps.sh untars .tar.xz (tar -J shells out to xz).
       - name: Host build prerequisites
         if: steps.cache.outputs.cache-hit != 'true'
         run: |
           apt-get update
-          apt-get install -y ninja-build python3-venv pkgconf bison flex
+          apt-get install -y ninja-build python3-venv pkgconf bison flex xz-utils
 
       - name: Build dependencies
         if: steps.cache.outputs.cache-hit != 'true'

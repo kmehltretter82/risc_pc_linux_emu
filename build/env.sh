@@ -3,6 +3,18 @@
 # (emsdk 4.0.10, meson 1.5.0; deps: zlib 1.3.2, libffi 3.5.2, pixman 0.44.2,
 #  glib 2.84.0). Source this file; do not execute it.
 
+# Parallelism. Default to cores, but cap by memory: clang and wasm-ld are
+# memory-hungry, and in a container nproc reports the *host's* cores, which on
+# a 2-core/7GB CI runner means -j16 thrashing itself to a standstill.
+if [ -z "${JOBS:-}" ]; then
+    _cores="$(nproc)"
+    _memgb="$(( $(awk '/MemTotal/{print $2}' /proc/meminfo) / 1024 / 1024 ))"
+    [ "$_memgb" -lt 1 ] && _memgb=1
+    JOBS="$_cores"
+    [ "$JOBS" -gt "$_memgb" ] && JOBS="$_memgb"
+fi
+export JOBS
+
 EMSDK_ROOT="${EMSDK_ROOT:-$HOME/linux-work/emsdk}"
 BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPS="$BUILD_DIR/deps"

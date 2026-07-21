@@ -21,6 +21,7 @@ jobs:
   wasm:
     runs-on: ubuntu-latest
     container: emscripten/emsdk:4.0.10
+    timeout-minutes: 150
     steps:
       - uses: actions/checkout@v4
 
@@ -77,6 +78,7 @@ jobs:
   verify:
     needs: wasm
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
@@ -100,7 +102,9 @@ jobs:
       # itself and would mask a broken service worker.
       - name: Boot the machine and type at it
         run: |
-          (cd _site && python3 -m http.server 8777) &
+          # Redirect the server's output: a background process holding the
+          # step's stdout open can keep the step from ever finishing.
+          (cd _site && python3 -m http.server 8777 >/tmp/serve.log 2>&1) &
           for i in $(seq 30); do curl -sf http://localhost:8777/ >/dev/null && break; sleep 1; done
           .venv/bin/python build/test-browser.py http://localhost:8777/ 420
 

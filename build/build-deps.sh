@@ -52,7 +52,8 @@ EOT
 
 fetch() {  # $1 = url, $2 = destdir
     mkdir -p "$2"
-    curl -Ls "$1" | tar xJC "$2" --strip-components=1
+    curl -Ls --fail --retry 3 --connect-timeout 20 --max-time 600 "$1" |
+        tar xJC "$2" --strip-components=1
 }
 
 echo "=== zlib $ZLIB_VERSION"
@@ -61,13 +62,14 @@ if [ ! -e "$TARGET/lib/libz.a" ]; then
     fetch "https://zlib.net/fossils/zlib-$ZLIB_VERSION.tar.xz" "$SRC/zlib"
     (cd "$SRC/zlib" &&
      emconfigure ./configure --prefix="$TARGET" --static &&
-     emmake make install -j"$(nproc)")
+     emmake make install -j"$JOBS")
 fi
 
 echo "=== libffi $FFI_VERSION"
 if [ ! -e "$TARGET/lib/libffi.a" ]; then
     mkdir -p "$SRC/libffi"
-    curl -Ls "https://github.com/libffi/libffi/releases/download/v$FFI_VERSION/libffi-$FFI_VERSION.tar.gz" |
+    curl -Ls --fail --retry 3 --connect-timeout 20 --max-time 600 \
+        "https://github.com/libffi/libffi/releases/download/v$FFI_VERSION/libffi-$FFI_VERSION.tar.gz" |
         tar xzC "$SRC/libffi" --strip-components=1
     (cd "$SRC/libffi" &&
      emconfigure ./configure --host=wasm64-unknown-linux \
@@ -75,7 +77,7 @@ if [ ! -e "$TARGET/lib/libffi.a" ]; then
         --disable-shared --disable-dependency-tracking \
         --disable-builddir --disable-multi-os-directory \
         --disable-raw-api --disable-docs &&
-     emmake make install SUBDIRS='include' -j"$(nproc)")
+     emmake make install SUBDIRS='include' -j"$JOBS")
 fi
 
 echo "=== pixman $PIXMAN_VERSION"

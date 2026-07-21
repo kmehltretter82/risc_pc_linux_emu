@@ -61,6 +61,6 @@ fi
 
 "$OUT/pyvenv/bin/meson" configure "$OUT" -Dc_link_args="$LINK_ARGS"
 
-emmake make -j"$(nproc)"
+emmake make -j"$JOBS"
 echo "=== artifacts:"
 ls -lh qemu-system-arm* 2>/dev/null || true

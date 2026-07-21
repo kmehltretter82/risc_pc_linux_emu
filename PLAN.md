@@ -189,8 +189,10 @@ already running mapped. QEMU must therefore supply the initial mapping:
 Estimate: days, not hours. This is the riskiest item in Phase 2 — it is the
 one piece with no working reference in-tree.
 
-**Status: working.** NetBSD 10.1 GENERIC prints its banner, sizes memory
-(65536 KB / 58488 KB avail) and attaches `mainbus0`.
+**Status: done.** NetBSD 10.1 GENERIC prints its banner, sizes memory
+(65536 KB / 58488 KB avail) and attaches `mainbus0`. Its console is
+`vidcvideo`, not serial — the framebuffer is the only output, so read it
+with a `screendump` or by dumping `display_phys`.
 
 **Finding #1 (candidate NetBSD bug), open.** `cpu_attach` then drops to
 `ddb` on an undefined instruction:
@@ -227,21 +229,28 @@ independent guest surfaced it.
 
 ### 2c. Input (after the screen works)
 
-- [ ] **Quadrature mouse** (IOMD `MOUSEX`/`MOUSEY` 0x0A0/0x0A4 + button bits)
-      → mainline `rpcmouse`, Debian `CONFIG_RPCMOUSE`, NetBSD.
-- [ ] **KART keyboard** (PS/2, per the TRM block diagram) → mainline
-      `rpckbd` (`drivers/input/serio/`, `CONFIG_SERIO_RPCKBD`) with `atkbd`
-      above it, plus NetBSD and RISC OS. Linux already probes the KART and
-      fails with `keyboard reset failed on rpckbd/serio0`, which is the
-      exact symptom a KART model should turn into a working keyboard.
-- [ ] Frontend: monitor becomes a live canvas; input routing by focus
-      (terminal→UART, monitor→PS/2), both consoles live at once.
+- [x] **Quadrature mouse** (IOMD `MOUSEX`/`MOUSEY` 0x0A0/0x0A4, buttons in
+      their own decode at 0x03310000) → mainline `rpcmouse`. Note it
+      samples on **VSYNC**, so VIDC20 also gained a 60 Hz vblank pulse on
+      bank A bit 3; without it the mouse never moves.
+- [x] **KART keyboard** (PS/2, via QEMU's ps2 core) → mainline `rpckbd`
+      with `atkbd` above it. KCTRL bit 7 TXEMPTY / bit 5 RXFULL, receive on
+      bank B bit 7. Linux now registers `AT Raw Set 2 keyboard`.
+- [ ] Frontend (**still open**): monitor becomes a live canvas; input
+      routing by focus (terminal→UART, monitor→PS/2), both consoles live at
+      once. Needs the wasm rebuild plus canvas work in `frontend/`; the
+      device side is done and testable natively.
 
 ### 2d. Regression
 
-- [ ] Extend `armv4-boards-test.sh` with a framebuffer smoke test: boot, then
-      QEMU-monitor `screendump` to PPM and assert geometry + non-blank, so
-      "did it draw" is machine-checkable rather than eyeballed.
+- [x] `armv4-boards-test.sh` gained `run_fb_test` plus a
+      `riscpc-vidc20-fbcon` case: boot, `screendump` to PPM, assert
+      geometry and a minimum lit-pixel count. Verified non-vacuous with a
+      negative control (serial-only console → 0 lit pixels → FAIL).
+      **Needs a QEMU built with pixman** — `screendump` is compiled out of
+      a `--without-default-features` build.
+- [x] `/proc/interrupts` is a cheap check that the input side is live:
+      vsync (3) and keyboard-receive (15) should both be counting.
 
 ## Phase 3 — Storage UX: clickable drives (≈1 week)
 

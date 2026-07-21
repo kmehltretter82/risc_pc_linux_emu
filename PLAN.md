@@ -222,6 +222,20 @@ model*, justified by the specification — not a workaround to make a guest
 boot. Nothing in mainline Linux reads either register, which is why only
 an independent guest surfaced it.
 
+**Finding #2 (open).** With the display handed over, NetBSD reaches
+`podulebus0` and the clock, then:
+
+    [ 1.0000000] clock: hz=100 stathz = 0 profhz = 0
+    [ 1.0000030] panic: divide by 0
+    ... traceback includes statclock() ...
+
+`stathz` is reported as 0 and something in the statistics-clock path
+divides by it. Two candidates, not yet separated: acorn32 starts the
+stat clock without setting `stathz`, or our IOMD timers lead it to. Do
+not "fix" this in the timer model until which is established — that is
+the same trap as Finding #1, where the obvious patch would have hidden a
+real defect in our own code.
+
 ### 2b. VIDC20 framebuffer
 
 - [ ] New `hw/display/vidc20.c`: single write port at `0x03400000`, register
@@ -236,8 +250,11 @@ an independent guest surfaced it.
       into `VIDEND` despite naming it `size`, and `VIDCR` gets
       `DMA_CR_E|DMA_CR_D|16` whose D bit and count are undocumented in the
       driver. Resolve from §4, not by fitting.
-- [ ] Cross-validate in order: NetBSD → mainline `acornfb` → Debian 2.4.27.
-      A model only one guest accepts is a model of that guest.
+- [x] Cross-validated against two independent drivers, which is the point
+      of the exercise: Linux `acornfb` at 640x480x4bpp, and NetBSD `wscons`
+      at **640x350** — a different mode, so HDSR/HDER/VDSR/VDER are
+      confirmed against something other than one driver's arithmetic.
+      Debian 2.4.27 remains to be tried.
 
 ### 2c. Input (after the screen works)
 

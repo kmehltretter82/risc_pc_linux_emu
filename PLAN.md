@@ -222,19 +222,35 @@ model*, justified by the specification — not a workaround to make a guest
 boot. Nothing in mainline Linux reads either register, which is why only
 an independent guest surfaced it.
 
-**Finding #2 (open).** With the display handed over, NetBSD reaches
-`podulebus0` and the clock, then:
+**Finding #2 — resolved: an upstream NetBSD bug. acorn32 cannot boot on
+any hardware.** With the display handed over, NetBSD reaches `podulebus0`
+and the clock, then dies on the first clock tick:
 
     [ 1.0000000] clock: hz=100 stathz = 0 profhz = 0
-    [ 1.0000030] panic: divide by 0
-    ... traceback includes statclock() ...
+    [ 1.0000030] panic: divide by 0     (traceback: statclock)
 
-`stathz` is reported as 0 and something in the statistics-clock path
-divides by it. Two candidates, not yet separated: acorn32 starts the
-stat clock without setting `stathz`, or our IOMD timers lead it to. Do
-not "fix" this in the timer model until which is established — that is
-the same trap as Finding #1, where the obvious patch would have hidden a
-real defect in our own code.
+The chain is deterministic and involves no hardware behaviour at all:
+
+1. `arm/iomd/iomd_clock.c` never assigns `stathz` — `cpu_initclocks()`
+   only prints it (:270) and tests it (:291). It is unconditionally 0.
+2. `kern/kern_clock.c:318` — `if (stathz == 0) statclock(frame);` so
+   `hardclock()` calls `statclock()` on every tick.
+3. `statclock()` first call: `spc_psdiv (0) != psdiv (1)`, takes the
+   `psdiv == 1` branch and calls `setstatclockrate(stathz)`, i.e. with 0.
+4. `iomd_clock.c:219` — `count = TIMER_FREQUENCY / newhz;`, unguarded.
+
+Nothing here depends on the emulation: `stathz` is never derived from
+hardware, and our IOMD timers work (Linux drives timer0 happily). Real
+SA-110 silicon would panic identically on the first tick.
+
+Candidate fix for a Phase 4 patch — either guard `setstatclockrate()`
+against 0, or have acorn32 set `stathz` and claim IRQ_TIMER1 properly.
+The first is smaller and matches the generic code's assumption that a
+port without a separate stat clock may still have the rate set.
+
+Together with Finding #1 this suggests acorn32 has not been booted on
+real hardware in a long time; both are the kind of rot only an
+independent guest surfaces.
 
 ### 2b. VIDC20 framebuffer
 

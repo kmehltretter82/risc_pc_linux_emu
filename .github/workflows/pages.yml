@@ -23,14 +23,11 @@ jobs:
     container: emscripten/emsdk:4.0.10
     steps:
       - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-          fetch-depth: 0
 
       - name: Cache key inputs
         id: key
         run: |
-          echo "qemu=$(git -C qemu rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "qemu=$(git ls-tree HEAD qemu --object-only)" >> "$GITHUB_OUTPUT"
           echo "scripts=$(cat build/*.sh build/emscripten-pty.js | sha256sum | cut -c1-16)" >> "$GITHUB_OUTPUT"
 
       - uses: actions/cache@v4
@@ -40,6 +37,17 @@ jobs:
             build/deps/target
             build/out
           key: wasm-${{ steps.key.outputs.qemu }}-${{ steps.key.outputs.scripts }}
+
+      # Fetch just the pinned QEMU commit. A recursive submodule checkout drags
+      # in QEMU's full history and its own submodules (roms, edk2, ...), which
+      # is gigabytes we never build.
+      - name: Fetch QEMU at pinned commit
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --no-checkout --filter=blob:none \
+            https://github.com/kmehltretter82/qemu.git qemu
+          git -C qemu fetch --depth 1 origin ${{ steps.key.outputs.qemu }}
+          git -C qemu checkout ${{ steps.key.outputs.qemu }}
 
       - name: Host build prerequisites
         if: steps.cache.outputs.cache-hit != 'true'

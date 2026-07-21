@@ -8,10 +8,15 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 
 ## Status
 
-Phase 0 (scaffold). See [PLAN.md](PLAN.md) for the full roadmap:
+**It boots.** Press POWER and a 1994 Acorn RISC PC runs Linux 7.2-rc4 in your
+browser tab — real QEMU, real ARMv4 emulation, no server. The console is
+read-only for now (see [PLAN.md](PLAN.md) for why, and what fixes it).
+
+See [PLAN.md](PLAN.md) for the full roadmap:
 
 1. **Serial-console MVP** — drawn RiscPC with a dark "NO SIGNAL" monitor, live
-   VT220-style terminal on the emulated 16550 UART; boots to `login:`.
+   VT220-style terminal on the emulated 16550 UART; boots to a shell. *(done,
+   minus keyboard input)*
 2. **The machine wakes up** — VIDC20 framebuffer, IOMD PS/2 keyboard,
    quadrature mouse.
 3. **Clickable storage** — upload/download IDE disk images, floppy.

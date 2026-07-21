@@ -63,8 +63,33 @@ jobs:
             build/out/qemu-system-arm.wasm
           if-no-files-found: error
 
-  deploy:
+  # Gate: the site must actually boot the guest to userspace, not merely load.
+  verify:
     needs: wasm
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: qemu-wasm
+          path: _site/qemu
+      - name: Assemble site
+        run: |
+          mkdir -p _site/assets
+          cp -r frontend/. _site/
+          cp assets/zImage assets/initramfs-busybox.cpio.gz _site/assets/
+      - name: Install browser
+        run: |
+          pip install playwright
+          playwright install --with-deps chromium
+      - name: Boot the machine
+        run: |
+          python3 build/serve.py 8777 &
+          for i in $(seq 30); do curl -sf http://localhost:8777/ >/dev/null && break; sleep 1; done
+          python3 build/test-browser.py http://localhost:8777/ 420
+
+  deploy:
+    needs: verify
     runs-on: ubuntu-latest
     environment:
       name: github-pages

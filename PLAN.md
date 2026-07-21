@@ -107,6 +107,29 @@ physical keyboard types over the serial line when the terminal has focus.
 4. **Definition of done**: public URL, cold load → `login:` , interactive shell,
    works in Chrome + Firefox (Safari best-effort).
 
+**Status (2026-07-21).** Boots. `build/run-node.mjs` reaches the BusyBox banner
+headless; `build/test-browser.py` does the same in Chromium against the
+assembled site, and that is the gate CI enforces. Done: emsdk 4.0.10 + deps
+(`build/build-deps.sh`), wasm64/TCI QEMU build (`build/build-qemu.sh`, 43 MB
+`.wasm`), the RiscPC/VT220 scene, coi-serviceworker, `build/serve.py` for local
+COOP/COEP.
+
+Two things worth knowing before picking this up again:
+
+- **The console is read-only.** Guest output reaches the page via emscripten's
+  stdout proxying. Real keyboard input needs a pty, and xterm-pty's PTY object
+  lives on the main thread while QEMU's `-sPROXY_TO_PTHREAD` runs `main()` in a
+  worker it cannot be cloned into; dropping that flag makes QEMU block the
+  browser main thread and freeze the tab. The wiring is kept behind
+  `XTERM_PTY=1` in `build/build-qemu.sh`. **Next step:** a small js-library
+  that proxies stdin reads (and `poll()` readability for fd 0) worker→main with
+  `__proxy: 'sync'` + Atomics, which is the piece xterm-pty does not do for
+  proxied main.
+- **Link flags do not come from `LDFLAGS`.** QEMU's own
+  `configs/meson/emscripten.txt` is loaded after configure's cross file and
+  replaces `c_link_args` wholesale. `build-qemu.sh` reads that list and appends
+  to it; edit there, not in `env.sh`.
+
 ## Phase 2 — The machine gets its own screen and keyboard (1–2 weeks)
 
 New QEMU device models on `armv4-boards` (guest drivers already exist in mainline):

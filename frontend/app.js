@@ -104,6 +104,13 @@ async function bootQemu(kernel, initrd) {
   term.reset();
   term.focus();
 
+  // Keystrokes land here on the main thread; build/stdin-proxy.js drains the
+  // queue from the worker running QEMU's main loop.
+  const stdin = (self.__rpcStdin = []);
+  term.onData((data) => {
+    for (const byte of new TextEncoder().encode(data)) stdin.push(byte);
+  });
+
   // QEMU's main() runs in a worker (-sPROXY_TO_PTHREAD), so the guest's
   // console arrives here through emscripten's stdout proxying rather than
   // through a pty. That is also why the console is currently read-only:

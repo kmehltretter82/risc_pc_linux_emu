@@ -40,22 +40,21 @@ fi
 # termios and blocking reads. Without it the guest's console output goes to
 # console.log instead of the terminal.
 #
-# XTERM_PTY=1 links xterm-pty's TTY override, which would give a real pty
-# (termios, blocking reads, therefore keyboard input). It is off by default
-# because it is incompatible with QEMU's -sPROXY_TO_PTHREAD: that runs main()
-# in a worker, while Module.pty is a live object on the main thread that
-# cannot be cloned into one, so the pty ops find no PTY and the console goes
-# nowhere. Dropping PROXY_TO_PTHREAD instead makes QEMU block the browser
-# main thread and freeze the tab. Until stdin is proxied worker->main, guest
-# output reaches the page through emscripten's own stdout proxying and the
-# console is read-only.
+# stdin-proxy.js gives the console a keyboard: QEMU's fd 0 lives on the worker
+# that -sPROXY_TO_PTHREAD puts main() on, while keystrokes arrive on the
+# browser main thread, so the read and poll paths are proxied across.
+#
+# XTERM_PTY=1 instead links xterm-pty, which would add full termios handling,
+# but it is incompatible with -sPROXY_TO_PTHREAD (its PTY object is
+# main-thread-only and it does not proxy reads) and dropping that flag makes
+# QEMU block the browser main thread and freeze the tab. Kept for reference.
 LINK_ARGS="$(python3 - "$QEMU_SRC/configs/meson/emscripten.txt" <<'PY'
 import ast, re, sys
 text = open(sys.argv[1]).read()
 m = re.search(r"^c_link_args = (\[.*?\])$", text, re.M)
 print(" ".join(ast.literal_eval(m.group(1))))
 PY
-)"
+) --js-library $HERE/stdin-proxy.js"
 if [ "${XTERM_PTY:-0}" = 1 ]; then
     LINK_ARGS="${LINK_ARGS//-sPROXY_TO_PTHREAD=1/} --js-library $HERE/emscripten-pty.js"
 fi

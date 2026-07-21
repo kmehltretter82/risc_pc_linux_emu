@@ -60,6 +60,23 @@ def main():
                 print(f"  {waited//1000}s: {tail}")
 
         ok = WANT in text
+
+        # Type into the guest and see whether it answers. Input travels
+        # main thread -> stdin-proxy.js -> QEMU's fd 0 on the worker.
+        typed_ok = False
+        if ok:
+            page.click("#terminal")
+            page.keyboard.type("uname -m")
+            page.keyboard.press("Enter")
+            for _ in range(30):
+                page.wait_for_timeout(2000)
+                after = page.evaluate(read_buffer)
+                if "armv4l" in after.replace(WANT, ""):
+                    typed_ok = True
+                    text = after
+                    break
+            print(f"keyboard input: {'works' if typed_ok else 'NO RESPONSE'}")
+
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
         if console:

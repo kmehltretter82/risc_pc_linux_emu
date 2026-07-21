@@ -107,28 +107,30 @@ physical keyboard types over the serial line when the terminal has focus.
 4. **Definition of done**: public URL, cold load → `login:` , interactive shell,
    works in Chrome + Firefox (Safari best-effort).
 
-**Status (2026-07-21).** Boots. `build/run-node.mjs` reaches the BusyBox banner
-headless; `build/test-browser.py` does the same in Chromium against the
-assembled site, and that is the gate CI enforces. Done: emsdk 4.0.10 + deps
-(`build/build-deps.sh`), wasm64/TCI QEMU build (`build/build-qemu.sh`, 43 MB
-`.wasm`), the RiscPC/VT220 scene, coi-serviceworker, `build/serve.py` for local
-COOP/COEP.
+**Status (2026-07-21): done.** The guest boots to an interactive shell in
+Chromium — `build/test-browser.py` presses POWER, waits for the BusyBox banner,
+then types `uname -m` and asserts the guest answers `armv4l`; that is the gate
+CI enforces before deploying. `build/run-node.mjs` is the same check headless.
+Built: emsdk 4.0.10 + deps (`build/build-deps.sh`), wasm64/TCI QEMU
+(`build/build-qemu.sh`, 43 MB `.wasm`), the RiscPC/VT220 scene,
+coi-serviceworker, `build/serve.py` for local COOP/COEP.
 
-Two things worth knowing before picking this up again:
+Three things worth knowing before touching the build:
 
-- **The console is read-only.** Guest output reaches the page via emscripten's
-  stdout proxying. Real keyboard input needs a pty, and xterm-pty's PTY object
-  lives on the main thread while QEMU's `-sPROXY_TO_PTHREAD` runs `main()` in a
-  worker it cannot be cloned into; dropping that flag makes QEMU block the
-  browser main thread and freeze the tab. The wiring is kept behind
-  `XTERM_PTY=1` in `build/build-qemu.sh`. **Next step:** a small js-library
-  that proxies stdin reads (and `poll()` readability for fd 0) worker→main with
-  `__proxy: 'sync'` + Atomics, which is the piece xterm-pty does not do for
-  proxied main.
 - **Link flags do not come from `LDFLAGS`.** QEMU's own
   `configs/meson/emscripten.txt` is loaded after configure's cross file and
   replaces `c_link_args` wholesale. `build-qemu.sh` reads that list and appends
   to it; edit there, not in `env.sh`.
+- **Keyboard input goes through `build/stdin-proxy.js`.** QEMU's `main()` runs
+  on a worker (`-sPROXY_TO_PTHREAD`) while keystrokes arrive on the browser
+  main thread, so the `read` and `poll` paths for fd 0 are proxied across with
+  emscripten's `__proxy: 'sync'`. xterm-pty would add real termios handling but
+  cannot work in this mode (its PTY object is main-thread-only and it does not
+  proxy reads); dropping `PROXY_TO_PTHREAD` instead freezes the tab. Kept
+  behind `XTERM_PTY=1` for reference.
+- **The console is raw, not a termios pty.** No line discipline, no `TIOCGWINSZ`
+  — full-screen programs and window resizing will not behave until something
+  like the xterm-pty path works under a proxied main.
 
 ## Phase 2 — The machine gets its own screen and keyboard (1–2 weeks)
 

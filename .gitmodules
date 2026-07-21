@@ -1,0 +1,8 @@
+[submodule "qemu"]
+	path = qemu
+	url = https://github.com/kmehltretter82/qemu.git
+	branch = armv4-boards
+[submodule "linux"]
+	path = linux
+	url = https://github.com/kmehltretter82/linux.git
+	branch = riscpc-emu

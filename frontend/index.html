@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RISC PC · mainline Linux · in your browser</title>
+<style>
+  body {
+    margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #101418; color: #d0d6dc; font-family: ui-monospace, "Cascadia Mono", monospace;
+  }
+  main { max-width: 42rem; padding: 2rem; }
+  h1 { color: #ffb000; font-size: 1.4rem; }         /* amber phosphor */
+  .cursor { animation: blink 1s steps(1) infinite; }
+  @keyframes blink { 50% { opacity: 0; } }
+  a { color: #7abaff; }
+  .dim { color: #6a7480; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Acorn RISC PC (1994) · mainline Linux · WebAssembly</h1>
+  <p>A real QEMU system emulator, compiled to WASM, will boot current mainline
+     Linux on an emulated ARMv4 RISC PC right here — serial console first,
+     VIDC20 screen later.</p>
+  <p class="dim">Phase 0: scaffold. Nothing is emulated on this page yet.</p>
+  <p><a href="https://github.com/kmehltretter82/risc_pc_linux_emu">github.com/kmehltretter82/risc_pc_linux_emu</a></p>
+  <p>riscpc login: <span class="cursor">▮</span></p>
+</main>
+</body>
+</html>

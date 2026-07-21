@@ -4,7 +4,7 @@ An Acorn **RISC PC** (1994, ARMv4) booting **current mainline Linux** — QEMU
 compiled to WebAssembly, running entirely client-side on GitHub Pages.
 No server, no plugins. Faster than the real machine, in a browser tab.
 
-**Live page:** https://kmehltretter82.github.io/risc_pc_linux_emu/ *(Phase 0 — placeholder)*
+**Live page:** https://kmehltretter82.github.io/risc_pc_linux_emu/ *(Phase 1 - serial console)*
 
 ## Status
 

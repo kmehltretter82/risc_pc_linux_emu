@@ -50,6 +50,35 @@ def main():
             browser.close()
             return 1
 
+        # The routed cable must have real endpoints, and the generated LK201
+        # keyboard must be complete. Hold a physical key long enough to inspect
+        # the matching rendered key's down/up animation state.
+        page.wait_for_function("""() => {
+            const cable = document.querySelector('#serial-cable-sheath');
+            return document.querySelectorAll('.vt-key').length >= 100
+                && cable.getAttribute('d') && cable.getTotalLength() > 20;
+        }""")
+        hardware = page.evaluate("""() => ({
+            keys: document.querySelectorAll('.vt-key').length,
+            cableLength: document.querySelector('#serial-cable-sheath').getTotalLength(),
+        })""")
+        page.keyboard.down("a")
+        physical_down = page.locator('[data-key-id="KeyA"]').evaluate(
+            "el => el.classList.contains('is-pressed')"
+        )
+        page.keyboard.up("a")
+        physical_up = not page.locator('[data-key-id="KeyA"]').evaluate(
+            "el => el.classList.contains('is-pressed')"
+        )
+        hardware_ok = (
+            hardware["keys"] >= 100
+            and hardware["cableLength"] > 20
+            and physical_down
+            and physical_up
+        )
+        print(f"serial cable + LK201: {'works' if hardware_ok else 'FAILED'} "
+              f"{hardware}, key_down={physical_down}, key_up={physical_up}")
+
         page.locator('label[for="kernel-stable"]').click()
         selector = page.evaluate("""() => ({
             stable: document.querySelector('#kernel-stable').checked,
@@ -166,10 +195,29 @@ def main():
                     break
             print(f"keyboard input: {'works' if typed_ok else 'NO RESPONSE'}")
 
+        # Enter a second command using only the rendered LK201 buttons. This
+        # checks the pointer/touch path separately from xterm's physical input.
+        virtual_keys_ok = False
+        if typed_ok:
+            for key_id in (
+                "KeyE", "KeyC", "KeyH", "KeyO", "Space",
+                "KeyL", "KeyK", "Digit2", "Digit0", "Digit1", "Return",
+            ):
+                page.locator(f'[data-key-id="{key_id}"]').click()
+            for _ in range(30):
+                page.wait_for_timeout(1000)
+                after = page.evaluate(read_buffer)
+                if "lk201" in after.replace("echo lk201", ""):
+                    virtual_keys_ok = True
+                    text = after
+                    break
+            print(f"on-screen LK201 input: "
+                  f"{'works' if virtual_keys_ok else 'NO RESPONSE'}")
+
         # Once running, POWER is a hard switch: it must reload the page (which
         # terminates the Wasm pthread) and return to a clean powered-off scene.
         hard_off_ok = False
-        if typed_ok:
+        if virtual_keys_ok:
             try:
                 page.wait_for_function("!document.querySelector('#power').disabled")
                 with page.expect_navigation(wait_until="load", timeout=10000):
@@ -189,8 +237,8 @@ def main():
                 console.append(f"[hard-off] {exc}")
             print(f"hard power off: {'works' if hard_off_ok else 'FAILED'}")
 
-        ok = (selector_ok and layout_ok and booted and prompt_visible
-              and typed_ok and hard_off_ok)
+        ok = (hardware_ok and selector_ok and layout_ok and booted
+              and prompt_visible and typed_ok and virtual_keys_ok and hard_off_ok)
 
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
@@ -198,9 +246,10 @@ def main():
             print("\n--- console ---")
             print("\n".join(console[-25:]))
         print(f"\nRESULT: {'PASS' if ok else 'FAIL'} "
-              f"(selector={selector_ok}, layout={layout_ok}, boot={booted}, "
-              f"prompt={prompt_visible}, "
-              f"input={typed_ok}, hard_off={hard_off_ok})")
+              f"(hardware={hardware_ok}, selector={selector_ok}, "
+              f"layout={layout_ok}, boot={booted}, prompt={prompt_visible}, "
+              f"physical_input={typed_ok}, virtual_input={virtual_keys_ok}, "
+              f"hard_off={hard_off_ok})")
         browser.close()
         return 0 if ok else 1
 

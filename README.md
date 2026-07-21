@@ -13,6 +13,10 @@ POWER, and a 1994 Acorn RISC PC runs either the current patched Linux 7.2-rc4
 or stable Linux 7.1.4 in your browser tab — real QEMU, real ARMv4 emulation, no
 server, interactive shell.
 
+The serial connection is drawn from the RISC PC to the VT220-style terminal.
+Its full LK201-style keyboard is clickable, sends input to the guest, and
+mirrors key-down/key-up animation from a physical PC or Mac keyboard.
+
 See [PLAN.md](PLAN.md) for the full roadmap:
 
 1. **Serial-console MVP** — drawn RiscPC with a dark "NO SIGNAL" monitor, live

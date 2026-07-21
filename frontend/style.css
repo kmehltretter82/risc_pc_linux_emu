@@ -26,11 +26,34 @@ code { color: var(--amber); }
 .bench {
   flex: 1; display: flex; flex-wrap: wrap; gap: 1rem;
   align-items: flex-start; justify-content: center; padding: 1rem 1.5rem 2rem;
+  position: relative; isolation: isolate;
 }
 .caption { max-width: 34rem; color: var(--dim); font-size: 0.78rem; line-height: 1.5; }
 
+/* The serial lead is an SVG because its endpoints move with the measured
+   terminal glass. It sits behind the two machines while the plugs sit above. */
+.serial-cable {
+  position: absolute; inset: 0; z-index: 0; width: 100%; height: 100%;
+  overflow: visible; pointer-events: none;
+}
+.serial-cable path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.serial-cable-shadow { stroke: rgba(0,0,0,.72); stroke-width: 11px; }
+.serial-cable-sheath { stroke: #363b3e; stroke-width: 7px; }
+.serial-cable-highlight { stroke: rgba(255,255,255,.14); stroke-width: 1.4px; }
+.serial-plug {
+  position: absolute; z-index: 3; display: block; width: 14px; height: 19px;
+  border: 1px solid #777; background: linear-gradient(90deg, #777, #c1beb3 45%, #656565);
+  box-shadow: 0 1px 3px rgba(0,0,0,.8); pointer-events: none;
+}
+.serial-plug::after {
+  content: ""; position: absolute; inset: 4px 3px; border-radius: 50%;
+  background: radial-gradient(circle, #17191a 0 1px, transparent 1.5px) 0 0 / 4px 4px;
+}
+.serial-plug-case { right: -9px; bottom: 8px; border-radius: 2px 5px 5px 2px; }
+.serial-plug-vt { left: -9px; bottom: 42px; border-radius: 5px 2px 2px 5px; }
+
 /* ---- the RISC PC ---- */
-.machine { display: flex; flex-direction: column; align-items: center; }
+.machine { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
 .monitor {
   background: var(--beige); border-radius: 10px 10px 6px 6px;
   padding: 14px 14px 8px; box-shadow: inset 0 -3px 6px rgba(0,0,0,.25);
@@ -118,9 +141,9 @@ code { color: var(--amber); }
 #kernel-selection { display: block; margin-bottom: 2px; color: #a59684; }
 
 /* ---- the terminal ---- */
-.vt { display: flex; flex-direction: column; align-items: center; }
+.vt { position: relative; z-index: 1; display: flex; flex-direction: column; align-items: center; }
 .vt-bezel {
-  background: #2e2a26; border-radius: 14px; padding: 22px;
+  position: relative; background: #2e2a26; border-radius: 14px; padding: 22px;
   box-shadow: inset 0 0 10px rgba(0,0,0,.7), 0 4px 14px rgba(0,0,0,.5);
   border: 1px solid #45403a;
 }
@@ -129,6 +152,87 @@ code { color: var(--amber); }
 /* xterm amber phosphor: colors are set in app.js; glass curvature hint */
 .vt-bezel .xterm { padding: 6px; background: #100c04; border-radius: 6px; }
 
+/* ---- DEC LK201-style VT220 keyboard ---- */
+.vt-keyboard-scroll {
+  max-width: 94vw; margin-top: 10px; padding: 0 4px 8px;
+  overflow-x: auto; overflow-y: hidden; scrollbar-color: #777 #25282b;
+}
+.vt-keyboard {
+  width: 720px; padding: 7px 10px 13px; color: #282a2c;
+  background: linear-gradient(165deg, #d9d3c6, #b8b1a3 72%, #999184);
+  border: 1px solid #8d867a; border-radius: 5px 5px 14px 14px;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.65), 0 5px 9px rgba(0,0,0,.5);
+  user-select: none; -webkit-user-select: none;
+}
+.keyboard-header {
+  height: 17px; display: flex; align-items: center; gap: 9px; padding: 0 3px 3px;
+  color: #625d55; font-size: .47rem; letter-spacing: .08em; text-transform: uppercase;
+}
+.dec-wordmark {
+  color: #5b5750; font-family: Helvetica, Arial, sans-serif; font-size: .63rem;
+  font-weight: 700; letter-spacing: -.06em; text-transform: lowercase;
+}
+.keyboard-model { margin-right: auto; }
+.keyboard-indicators { display: flex; align-items: center; gap: 8px; }
+.keyboard-indicators span { display: flex; align-items: center; gap: 3px; }
+.keyboard-indicators i {
+  width: 5px; height: 5px; border-radius: 50%; background: #625c42;
+  box-shadow: inset 0 1px 1px rgba(0,0,0,.5);
+}
+.keyboard-indicators i.on { background: #d6a824; box-shadow: 0 0 4px #d6a824; }
+.keyboard-function-row { display: flex; align-items: stretch; gap: 3px; margin-bottom: 9px; }
+.keyboard-function-row .group-start { margin-left: 7px; }
+.keyboard-lower {
+  display: grid; grid-template-columns: minmax(0, 4.5fr) minmax(0, 1.25fr) minmax(0, 1.5fr);
+  gap: 9px;
+}
+.keyboard-main { display: flex; flex-direction: column; gap: 3px; }
+.keyboard-main-row { display: flex; gap: 3px; }
+.keyboard-edit, .keyboard-keypad {
+  display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(5, 30px); gap: 3px;
+}
+.keyboard-keypad { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.vt-key {
+  --key-units: 1; min-width: 0; height: 30px; padding: 2px;
+  flex: var(--key-units) 1 0; position: relative;
+  color: #252729; font: inherit; font-size: .54rem; line-height: .95;
+  white-space: pre-line; text-align: center; cursor: pointer; touch-action: manipulation;
+  background: linear-gradient(#e3e0d8, #bbb8af);
+  border: 1px solid #918e87; border-bottom: 3px solid #77746e; border-radius: 3px;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.85), 0 1px 1px rgba(0,0,0,.28);
+  transform: translateY(0); transition: transform 45ms ease, border-width 45ms ease,
+    background 45ms ease, box-shadow 45ms ease;
+}
+.keyboard-function-row .vt-key { height: 28px; font-size: .43rem; line-height: 1.05; }
+.vt-key.key-local { color: #e6e8e7; background: linear-gradient(#777f81, #555c5e); border-color: #4d5354; }
+.vt-key.key-function, .vt-key.key-edit, .vt-key.key-pf {
+  color: #e7e9e8; background: linear-gradient(#697477, #4c5558); border-color: #444c4e;
+}
+.vt-key.key-arrow { font-size: .82rem; }
+.vt-key.key-wide-label { font-size: .45rem; line-height: 1.08; }
+.vt-key:hover { filter: brightness(1.05); }
+.vt-key:active, .vt-key.is-pressed {
+  transform: translateY(2px); border-bottom-width: 1px;
+  background: linear-gradient(#b9b7b0, #aaa79f);
+  box-shadow: inset 0 1px 3px rgba(0,0,0,.25);
+}
+.vt-key.key-local:active, .vt-key.key-local.is-pressed,
+.vt-key.key-function:active, .vt-key.key-function.is-pressed,
+.vt-key.key-edit:active, .vt-key.key-edit.is-pressed,
+.vt-key.key-pf:active, .vt-key.key-pf.is-pressed {
+  background: linear-gradient(#50595b, #454c4e);
+}
+.vt-key.is-latched { outline: 2px solid #b88b20; outline-offset: -2px; }
+.vt-key:focus-visible { outline: 2px solid #176fa8; outline-offset: 1px; z-index: 2; }
+
 footer { padding: 0.7rem 1.2rem; font-size: 0.72rem; color: var(--dim); }
 
-@media (max-width: 1100px) { .bench { flex-direction: column; align-items: center; } }
+@media (max-width: 1160px) {
+  .bench { flex-direction: column; align-items: center; }
+  .serial-plug-vt { left: auto; right: -9px; border-radius: 2px 5px 5px 2px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vt-key { transition: none; }
+}

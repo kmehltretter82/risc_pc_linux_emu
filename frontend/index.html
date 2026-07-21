@@ -15,6 +15,11 @@
 </header>
 
 <div class="bench">
+  <svg class="serial-cable" id="serial-cable" aria-hidden="true" focusable="false">
+    <path class="serial-cable-shadow" id="serial-cable-shadow"></path>
+    <path class="serial-cable-sheath" id="serial-cable-sheath"></path>
+    <path class="serial-cable-highlight" id="serial-cable-highlight"></path>
+  </svg>
   <section class="machine">
     <div class="monitor">
       <div class="crt" id="crt"><span class="nosignal">NO SIGNAL</span></div>
@@ -27,6 +32,7 @@
         <span class="led" id="power-led"></span>
         <button id="power" title="Power on" aria-pressed="false">POWER</button>
       </div>
+      <span class="serial-plug serial-plug-case" id="serial-plug-case" aria-hidden="true"></span>
     </div>
     <fieldset class="kernel-tray" id="kernel-selector" aria-describedby="kernel-help">
       <legend>BOOT MODULE TRAY</legend>
@@ -57,11 +63,31 @@
 
   <section class="vt">
     <div class="vt-bezel">
+      <span class="serial-plug serial-plug-vt" id="serial-plug-vt" aria-hidden="true"></span>
       <div id="terminal"></div>
     </div>
+    <div class="vt-keyboard-scroll">
+      <div class="vt-keyboard" id="vt-keyboard" aria-label="DEC LK201-style VT220 keyboard">
+        <div class="keyboard-header">
+          <span class="dec-wordmark">digital</span>
+          <span class="keyboard-model">LK201 · VT220</span>
+          <span class="keyboard-indicators" aria-hidden="true">
+            <span>Hold<i></i></span><span>Lock<i id="keyboard-lock-light"></i></span>
+            <span>Compose<i></i></span><span>Wait<i></i></span>
+          </span>
+        </div>
+        <div class="keyboard-function-row" id="keyboard-function-row"></div>
+        <div class="keyboard-lower">
+          <div class="keyboard-main" id="keyboard-main"></div>
+          <div class="keyboard-edit" id="keyboard-edit"></div>
+          <div class="keyboard-keypad" id="keyboard-keypad"></div>
+        </div>
+      </div>
+    </div>
     <p class="caption">VT220-style terminal on the emulated 16550 UART
-    (<code>console=ttyS0</code>). Click it and type — keystrokes travel down
-    the serial line into the guest.</p>
+    (<code>console=ttyS0</code>) with an LK201-style keyboard. Click its keys
+    or type on your physical keyboard — both travel down the serial line, and
+    physical presses animate here too.</p>
   </section>
 </div>
 

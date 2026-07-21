@@ -23,6 +23,7 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 | RPCEmu | `~/linux-work/rpcemu/src/vidc20.c` | Independent implementation written against RISC OS. Documents field masks (`HDSR/HDER & 0x3ffe`, `VDSR/VDER & 0x1fff`) and rejects writes with reserved bits set |
 | NetBSD/acorn32 | `~/linux-work/netbsd-acorn32/` | 10.1 GENERIC kernel (ELF32 ARM, entry 0xf0000000) + `vidc20config.c`, `vidc.h`, `bootconfig.h`, `rpc_machdep.c`. Second independent VIDC20 driver, **with a serial console** |
 | Debian RiscPC kernels | `~/linux-work/armv4-images/riscpc/` | 2.2.19 / 2.4.16 / 2.4.27, `CONFIG_FB_ACORN=y`, `CONFIG_RPCMOUSE=y`. Frozen 2004 artifacts — cannot have been influenced by this emulator |
+| SA-110 datasheet | `~/linux-work/docs/sa110-datasheet.pdf` | DEC StrongARM Data Sheet V2.0, 64 pp, **has a text layer**. §5.1 p14 is the CP15 access rules, §5.2 p15 Table 3 the register set. Settles Finding #1 |
 | RiscPC TRM | `~/linux-work/docs/riscpc-trm.pdf` | 112 pp, but a **scan** — no usable text layer. Needs poppler to render pages as images |
 
 Prior art to lean on: **ktock/qemu-wasm** (Emscripten build recipes, Dockerfiles for
@@ -194,21 +195,32 @@ one piece with no working reference in-tree.
 `vidcvideo`, not serial — the framebuffer is the only output, so read it
 with a `screendump` or by dumping `display_phys`.
 
-**Finding #1 (candidate NetBSD bug), open.** `cpu_attach` then drops to
-`ddb` on an undefined instruction:
+**Finding #1 — resolved: this is a QEMU bug, not a NetBSD one.**
+`cpu_attach` drops to `ddb` on an undefined instruction:
 
     f0017118:  mrc 15, 0, r3, cr1, cr0, {1}   ; ACTLR    - ARMv6+
     f0017120:  mrc 15, 0, r3, cr0, cr0, {6}   ; ID_MMFR2 - ARMv7
 
 Both reads are unconditional, on an ARMv4 core that has neither register.
-These accesses are UNPREDICTABLE on SA-110, so QEMU is *permitted* to take
-the undefined-instruction trap; real silicon most likely ignores `opc2` and
-returns the control register. Do **not** silence this by making the SA-110
-model RAZ — that would fit the CPU to one guest and destroy the ability to
-find this class of bug. Resolve it from the SA-110 datasheet, then either
-patch NetBSD or implement the register with a written justification.
-Nothing in mainline Linux reads either register, which is why only an
-independent guest surfaced it.
+
+`docs/sa110-datasheet.pdf` settles it. §5.1 (p14) documents the undefined
+instruction trap for exactly one case — *"only allowed in non-user modes
+and the undefined instruction trap will be taken if accesses are attempted
+in user mode"* — and describes `CRm`/`OPC_2` as *"function bits for **some**
+MRC/MCR instructions"*, i.e. not decoded for the rest. §5.2 (p15) says an
+access to an invalid register is *"unpredictable"*, which constrains the
+**result**, not the behaviour.
+
+`cpu_attach` runs in SVC mode, so on real silicon neither read traps; they
+return an unpredictable value, most likely the Control register, and
+NetBSD stores a junk value it never uses. **QEMU's SA-110 model is wrong to
+raise undefined here.**
+
+Fix in the CPU model, citing the datasheet: CP15 reads in a privileged
+mode must not trap on undecoded `OPC_2`/`CRm`. Note this is a fix *to the
+model*, justified by the specification — not a workaround to make a guest
+boot. Nothing in mainline Linux reads either register, which is why only
+an independent guest surfaced it.
 
 ### 2b. VIDC20 framebuffer
 

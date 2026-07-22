@@ -387,12 +387,12 @@ independent guest surfaces.
       strict checkpatch, and pass separate `git-send-email --dry-run` parsing.
       Only actual delivery remains.
 - [x] **About page**: `frontend/about.html` tells the data-sheet-first bug-hunt
-      story, links the three public Linux fixes and the public QEMU IDE fix,
+      story, links the three public Linux fixes and two public QEMU fixes,
       records the NetBSD and FIQ findings, and diagrams the browser → Emscripten
       → QEMU → RiscPC → Linux path. It is linked from the live-machine footer,
       lays out at desktop and 390 px mobile widths, and the deployment gate
-      verifies six findings, four commit links, five architecture stages and no
-      horizontal overflow.
+      verifies seven findings, five commit links, five architecture stages and
+      no horizontal overflow.
 - [ ] Upstream the machine models (riscpc, netwinder, acorn-iomd, dc21285,
       sl82c105) with `tests/functional/` entries; collie is the precedent.
 - [ ] Adopt the upstream Wasm TCG backend when merged (free speed-up over TCI).

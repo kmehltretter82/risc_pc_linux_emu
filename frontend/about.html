@@ -1,0 +1,218 @@
+<!doctype html>
+<!-- SPDX-License-Identifier: GPL-2.0 -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>About the RISC PC browser emulator</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body class="about-page">
+<header class="about-header">
+  <h1>Acorn RISC PC <span class="dim">· the bug-hunt behind the browser machine</span></h1>
+  <nav aria-label="Project navigation">
+    <a href="index.html">LIVE MACHINE</a>
+    <a href="https://github.com/kmehltretter82/risc_pc_linux_emu">SOURCE</a>
+  </nav>
+</header>
+
+<main class="about-main">
+  <section class="about-hero" aria-labelledby="about-title">
+    <p class="about-kicker">1994 HARDWARE · 2026 KERNEL · ONE STATIC PAGE</p>
+    <h2 id="about-title">Old machines make unusually good software tests.</h2>
+    <p>
+      This started as a way to run current mainline Linux on an Acorn RISC PC
+      without asking anyone to find a working thirty-two-year-old computer.
+      It became a hardware-assisted archaeology project: model the machine from
+      its data sheets, run independent operating systems, and treat every
+      disagreement as evidence instead of tuning the emulator until one driver
+      is happy.
+    </p>
+    <p>
+      The result is the machine on the previous page: a real ARMv4 Linux kernel
+      running inside QEMU, compiled to WebAssembly, with its own VIDC20 screen,
+      keyboard, mouse, IDE disk, floppy controller and a separate serial VT220.
+      Nothing runs on a backend server.
+    </p>
+  </section>
+
+  <section class="about-section" aria-labelledby="method-title">
+    <div class="section-heading">
+      <p>METHOD</p>
+      <h2 id="method-title">The data sheet is the specification</h2>
+    </div>
+    <div class="about-columns">
+      <div>
+        <h3>Independent oracles</h3>
+        <p>
+          The VIDC20 and SA-110 manuals define the model. Mainline Linux is the
+          fast feedback loop; NetBSD/acorn32, RPCEmu and frozen Debian kernels
+          provide independent implementations that could not have copied this
+          emulator's assumptions.
+        </p>
+      </div>
+      <div>
+        <h3>Failures are the useful result</h3>
+        <p>
+          If a specification-faithful device makes a guest fail, the failure is
+          investigated on both sides. That distinction has already uncovered
+          bugs in Linux, NetBSD and QEMU itself.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="about-section" aria-labelledby="findings-title">
+    <div class="section-heading">
+      <p>FINDINGS</p>
+      <h2 id="findings-title">What the emulated hardware exposed</h2>
+    </div>
+    <div class="finding-grid">
+      <article class="finding-card">
+        <span class="finding-owner linux">LINUX</span>
+        <h3>Floppy teardown ran work after releasing its resources</h3>
+        <p>
+          An FDC-less RISC PC reliably printed <code>work still pending</code>.
+          The probe error path released IRQ and DMA state before draining its
+          workqueue. Restoring the missing flush removes the race; the refined
+          patch is ready for the block maintainers.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/linux/commit/3b24263d8bd2b8c4aec1f5a54feeed7dd99f75a5">
+          working Linux commit →
+        </a>
+      </article>
+
+      <article class="finding-card">
+        <span class="finding-owner linux">LINUX</span>
+        <h3>The NetWinder could not claim its only disk controller</h3>
+        <p>
+          Footbridge described no PCI I/O window below <code>0x1000</code>, so
+          libata could never claim the SL82C105's fixed legacy IDE ports. Adding
+          the DC21285's real 64 KiB window lets the machine mount its disk.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/linux/commit/85f8fe0159314e7952c6b2a6ee19d984d4b5d07e">
+          Linux patch →
+        </a>
+      </article>
+
+      <article class="finding-card">
+        <span class="finding-owner linux">LINUX</span>
+        <h3>A configuration-dependent header build failure</h3>
+        <p>
+          With tracing enabled, <code>linux/tick.h</code> used ktime helpers and
+          <code>TICK_NSEC</code> without including the headers that define them.
+          The RISC PC config made the missing direct dependencies visible.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/linux/commit/36ea1cf6b8d1c802f4121a8032d4f5d58f5a8283">
+          Linux patch →
+        </a>
+      </article>
+
+      <article class="finding-card">
+        <span class="finding-owner qemu">QEMU</span>
+        <h3>MMIO IDE silently latched an unconnected IRQ</h3>
+        <p>
+          QEMU boards normally connect sysbus IRQs after realizing a device.
+          The MMIO IDE core copied the line too early, discarding every later
+          interrupt. A forwarding IRQ restores conventional board wiring.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/qemu/commit/523240a987a98e87d24146b36ef09bfe9e67aeb4">
+          QEMU patch →
+        </a>
+      </article>
+
+      <article class="finding-card">
+        <span class="finding-owner qemu">QEMU + NETBSD</span>
+        <h3>An independent guest found two deeper faults</h3>
+        <p>
+          NetBSD exercised privileged SA-110 CP15 encodings Linux never reads,
+          exposing an over-strict QEMU decoder. After that model fix it reached
+          the clock and revealed an acorn32 divide-by-zero: <code>stathz</code>
+          remains zero and is passed to the IOMD rate calculation.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/risc_pc_linux_emu/blob/main/PLAN.md#2a-boot-netbsdacorn32--the-primary-target">
+          evidence and instruction traces →
+        </a>
+      </article>
+
+      <article class="finding-card">
+        <span class="finding-owner current">CURRENT</span>
+        <h3>The working floppy found another legacy boundary</h3>
+        <p>
+          Real reads and writes now pass through the ARM FIQ pseudo-DMA path.
+          They also show that mach-rpc's legacy <code>enable_fiq()</code> reaches
+          generic IRQ startup with a descriptor that was installed but never
+          activated. The transfer succeeds; the kernel warning remains recorded
+          rather than hidden in the device model.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/risc_pc_linux_emu/blob/main/PLAN.md#phase-4--ecosystem--stretch-ongoing">
+          current investigation →
+        </a>
+      </article>
+    </div>
+  </section>
+
+  <section class="about-section" aria-labelledby="architecture-title">
+    <div class="section-heading">
+      <p>ARCHITECTURE</p>
+      <h2 id="architecture-title">How a static page becomes a computer</h2>
+    </div>
+    <ol class="architecture-flow">
+      <li>
+        <strong>Browser workbench</strong>
+        <span>xterm.js, canvas, keyboard and local disk-file controls</span>
+      </li>
+      <li>
+        <strong>Emscripten bridge</strong>
+        <span>SharedArrayBuffer queues cross into QEMU's pthread worker</span>
+      </li>
+      <li>
+        <strong>QEMU in Wasm</strong>
+        <span>TCI interprets the ARMv4 guest; MEMFS backs removable media</span>
+      </li>
+      <li>
+        <strong>RISC PC hardware</strong>
+        <span>SA-110, IOMD, VIDC20, KART, IDE, FDC and 16550 UART</span>
+      </li>
+      <li>
+        <strong>Mainline Linux</strong>
+        <span>Mainline drivers see interrupts, DMA, framebuffer and disks</span>
+      </li>
+    </ol>
+
+    <div class="path-table" role="table" aria-label="Browser and guest data paths">
+      <div role="row"><strong role="cell">SERIAL</strong><span role="cell">guest 16550 → Wasm stdout → VT220 glass</span></div>
+      <div role="row"><strong role="cell">DISPLAY</strong><span role="cell">VIDC20 scanout → QEMU surface → monitor canvas</span></div>
+      <div role="row"><strong role="cell">INPUT</strong><span role="cell">browser events → worker queue → PS/2 and quadrature devices</span></div>
+      <div role="row"><strong role="cell">STORAGE</strong><span role="cell">local raw image → MEMFS → emulated IDE/FDC → downloadable copy</span></div>
+    </div>
+  </section>
+
+  <section class="about-section reproducibility" aria-labelledby="repro-title">
+    <div class="section-heading">
+      <p>REPRODUCIBILITY</p>
+      <h2 id="repro-title">The demo is also the test case</h2>
+    </div>
+    <p>
+      The repository pins Linux and QEMU source commits, records every shipped
+      binary's checksum and toolchain, and builds the page from plain static
+      files. Before deployment, headless Chromium must boot the stable kernel,
+      draw a non-empty 640×480 framebuffer, exercise physical and on-screen
+      input, round-trip writes through IDE and floppy images, cut power, and
+      restore the opt-in IndexedDB copy.
+    </p>
+    <div class="about-actions">
+      <a href="index.html">POWER ON THE MACHINE</a>
+      <a href="https://github.com/kmehltretter82/risc_pc_linux_emu/blob/main/assets/README.md">BINARY PROVENANCE</a>
+      <a href="https://github.com/kmehltretter82/risc_pc_linux_emu/blob/main/PLAN.md">FULL PROJECT PLAN</a>
+    </div>
+  </section>
+</main>
+
+<footer class="about-footer">
+  <a href="index.html">live emulator</a> ·
+  <a href="https://github.com/kmehltretter82/risc_pc_linux_emu">source</a> ·
+  GPL-2.0
+</footer>
+</body>
+</html>

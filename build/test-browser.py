@@ -589,6 +589,36 @@ def main():
                 with page.expect_navigation(wait_until="load", timeout=10000):
                     page.click("#power")
 
+        # The project story is a deployable page, not just prose in the source
+        # tree. Check its four patch links, findings, architecture flow and
+        # responsive width as part of the same assembled-site gate.
+        about_ok = False
+        about = {}
+        try:
+            page.goto(URL.rstrip("/") + "/about.html", wait_until="load")
+            page.wait_for_selector("#about-title")
+            about = page.evaluate("""() => ({
+                title: document.querySelector('#about-title').textContent,
+                findings: document.querySelectorAll('.finding-card').length,
+                patchLinks: document.querySelectorAll('.finding-card a[href*="/commit/"]').length,
+                flowSteps: document.querySelectorAll('.architecture-flow > li').length,
+                hasBackLink: [...document.querySelectorAll('a')].some(
+                    link => link.getAttribute('href') === 'index.html'),
+                pageWidth: document.documentElement.scrollWidth,
+                viewportWidth: innerWidth,
+            })""")
+            about_ok = (
+                "Old machines" in about["title"]
+                and about["findings"] == 6
+                and about["patchLinks"] == 4
+                and about["flowSteps"] == 5
+                and about["hasBackLink"]
+                and about["pageWidth"] <= about["viewportWidth"]
+            )
+        except Exception as exc:
+            console.append(f"[about] {exc}")
+        print(f"about page: {'works' if about_ok else 'FAILED'} {about}")
+
         ok = (hardware_ok and selector_ok and disk_selection_ok
               and floppy_selection_ok
               and layout_ok and booted
@@ -597,7 +627,7 @@ def main():
               and machine_input_ok and virtual_keys_ok
               and ide_round_trip_ok and floppy_round_trip_ok
               and persistence_save_ok and hard_off_ok
-              and persistence_restore_ok and factory_reset_ok)
+              and persistence_restore_ok and factory_reset_ok and about_ok)
 
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
@@ -616,7 +646,7 @@ def main():
               f"floppy_round_trip={floppy_round_trip_ok}, "
               f"idbfs_save={persistence_save_ok}, hard_off={hard_off_ok}, "
               f"idbfs_restore={persistence_restore_ok}, "
-              f"factory_reset={factory_reset_ok})")
+              f"factory_reset={factory_reset_ok}, about={about_ok})")
         browser.close()
         return 0 if ok else 1
 

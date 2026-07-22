@@ -339,6 +339,98 @@ code { color: var(--amber); }
 
 footer { padding: 0.7rem 1.2rem; font-size: 0.72rem; color: var(--dim); }
 
+/* ---- project story / about page ---- */
+.about-page { display: block; }
+.about-header {
+  display: flex; align-items: center; justify-content: space-between; gap: 1rem;
+  border-bottom: 1px solid #292e33;
+}
+.about-header nav { display: flex; gap: 1rem; font-size: .68rem; letter-spacing: .08em; }
+.about-main { width: min(1040px, calc(100% - 2rem)); margin: 0 auto; padding: 2rem 0 3rem; }
+.about-hero {
+  max-width: 850px; padding: 1.6rem 0 2.2rem;
+  border-bottom: 1px solid #292e33;
+}
+.about-kicker, .section-heading > p {
+  margin: 0 0 .55rem; color: var(--amber); font-size: .66rem;
+  letter-spacing: .14em;
+}
+.about-hero h2 {
+  margin: 0 0 1rem; max-width: 760px; color: #e0e4e7;
+  font-size: clamp(1.55rem, 4vw, 2.5rem); line-height: 1.12;
+}
+.about-hero > p:not(.about-kicker) {
+  max-width: 780px; margin: .75rem 0; color: #aeb6bd; font-size: .88rem;
+  line-height: 1.75;
+}
+.about-section { padding: 2.3rem 0; border-bottom: 1px solid #292e33; }
+.section-heading { margin-bottom: 1.25rem; }
+.section-heading h2 { margin: 0; color: #dce1e5; font-size: 1.25rem; }
+.about-columns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; }
+.about-columns > div, .finding-card {
+  padding: 1.1rem; background: #1a1e22; border: 1px solid #30363c;
+  border-radius: 5px;
+}
+.about-columns h3, .finding-card h3 {
+  margin: 0 0 .65rem; color: #cfd5da; font-size: .87rem; line-height: 1.4;
+}
+.about-columns p, .finding-card p, .reproducibility > p {
+  margin: 0; color: #929ca5; font-size: .76rem; line-height: 1.7;
+}
+.finding-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: .85rem; }
+.finding-card { display: flex; min-height: 250px; flex-direction: column; }
+.finding-owner {
+  align-self: flex-start; margin-bottom: .75rem; padding: 2px 5px;
+  color: #e4b94e; font-size: .52rem; letter-spacing: .12em;
+  border: 1px solid #705a25; border-radius: 2px;
+}
+.finding-owner.qemu { color: #7abaff; border-color: #315b76; }
+.finding-owner.current { color: #c59af2; border-color: #62427b; }
+.patch-link { margin-top: auto; padding-top: 1rem; font-size: .65rem; }
+.architecture-flow {
+  display: grid; grid-template-columns: repeat(5, 1fr); gap: 12px;
+  margin: 0; padding: 0; list-style: none;
+}
+.architecture-flow li {
+  position: relative; min-width: 0; padding: .85rem .75rem;
+  background: #1b2024; border: 1px solid #343b41; border-radius: 4px;
+}
+.architecture-flow li:not(:last-child)::after {
+  content: "›"; position: absolute; z-index: 2; right: -10px; top: 50%;
+  color: var(--amber); font-size: 1.1rem; transform: translateY(-55%);
+}
+.architecture-flow strong {
+  display: block; margin-bottom: .45rem; color: #d2d8dc;
+  font-size: .68rem; line-height: 1.35;
+}
+.architecture-flow span { display: block; color: #818d96; font-size: .59rem; line-height: 1.55; }
+.path-table { margin-top: 1rem; border-top: 1px solid #30363c; }
+.path-table > div {
+  display: grid; grid-template-columns: 90px 1fr; gap: .75rem;
+  padding: .7rem .4rem; border-bottom: 1px solid #30363c;
+}
+.path-table strong { color: var(--amber); font-size: .6rem; letter-spacing: .08em; }
+.path-table span { color: #909ba4; font-size: .67rem; }
+.reproducibility > p { max-width: 830px; }
+.about-actions { display: flex; flex-wrap: wrap; gap: .6rem; margin-top: 1.2rem; }
+.about-actions a {
+  padding: .55rem .7rem; color: #b9d8ed; font-size: .6rem; letter-spacing: .05em;
+  text-decoration: none; border: 1px solid #3b596b; border-radius: 3px;
+  background: #1a242a;
+}
+.about-actions a:hover { border-color: #6aa3c4; }
+.about-footer { width: min(1040px, calc(100% - 2rem)); margin: 0 auto; }
+
+@media (max-width: 760px) {
+  .about-header { align-items: flex-start; flex-direction: column; }
+  .about-columns, .finding-grid { grid-template-columns: 1fr; }
+  .finding-card { min-height: 0; }
+  .architecture-flow { grid-template-columns: 1fr; }
+  .architecture-flow li:not(:last-child)::after {
+    right: 50%; top: auto; bottom: -14px; transform: rotate(90deg);
+  }
+}
+
 @media (max-width: 1160px) {
   .bench { flex-direction: column; align-items: center; }
   .serial-plug-vt { left: auto; right: -9px; border-radius: 2px 5px 5px 2px; }

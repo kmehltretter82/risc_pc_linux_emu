@@ -31,6 +31,10 @@ The serial connection is drawn from the RISC PC to the VT220-style terminal.
 Its full LK201-style keyboard is clickable, sends input to the guest, and
 mirrors key-down/key-up animation from a physical PC or Mac keyboard.
 
+The linked **About** page explains the data-sheet-first emulation method, the
+Linux/NetBSD/QEMU bugs this hardware exposed, and every browser-to-guest data
+path, with direct links to the public patch commits.
+
 See [PLAN.md](PLAN.md) for the full roadmap:
 
 1. **Serial-console MVP** — live VT220-style terminal on the emulated 16550

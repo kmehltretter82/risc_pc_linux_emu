@@ -4,7 +4,7 @@
 QEMU compiled to WebAssembly, entirely inside one static web page on GitHub Pages.
 No server, no plugins. Faster than the real machine, in a browser tab.
 
-**Repo:** `kmehltretter82/risc_pc_linux_emu` · **URL (once live):** `https://kmehltretter82.github.io/risc_pc_linux_emu/`
+**Repo:** `kmehltretter82/risc_pc_linux_emu` · **Live URL:** `https://kmehltretter82.github.io/risc_pc_linux_emu/`
 
 ---
 
@@ -45,10 +45,13 @@ GitHub Pages (static files only)
 ├── xterm.js                  terminal glass inside the VT220 bezel
 ├── qemu-system-arm.{js,wasm} Emscripten build of the armv4-boards fork
 └── assets/
-    ├── zImage                mainline rpc kernel (prebuilt, gcc-8)
-    ├── rootfs.cpio.gz        BusyBox initramfs (Phase 1 root)
-    └── rootfs.img            32 MB ext2 (attached as IDE disk, Phase 3)
+    ├── zImage*                       current + stable rpc kernels (prebuilt, gcc-8)
+    ├── initramfs-busybox.cpio.gz     BusyBox initramfs (Phase 1 root)
+    └── qemu/qemu-system-arm.{js,wasm} pinned emulator build
 ```
+
+IDE and floppy media are selected by the visitor and stay browser-local; the
+site does not ship a writable factory disk image.
 
 Boot flow in the tab: click power button → fetch assets with progress indicator →
 drop them into Emscripten's in-memory FS → start QEMU with
@@ -63,7 +66,9 @@ quadrature mouse.
 
 ## Phase 0 — Repo scaffold (hours)
 
-- [ ] Create GitHub repo `risc_pc_linux_emu`; enable Pages (deploy from Actions).
+- [x] Create GitHub repo `risc_pc_linux_emu`; enable Pages (deploy from Actions).
+      Re-verified 2026-07-22: public URL returns HTTP 200 and the workflow gates
+      deployment on the full Chromium boot/input/storage regression.
 - [ ] Dependencies are our existing forks, pinned as submodules — never copies:
   - `qemu/` → `kmehltretter82/qemu` @ `armv4-boards` (machine model lives here).
   - `linux/` → Karl's linux fork; **create branch `riscpc-emu`**: v7.2-rc4 + the three
@@ -71,7 +76,14 @@ quadrature mouse.
     shipped zImage. Push it — every shipped binary must have a public source commit.
   - `assets/README.md` records provenance for each binary: source repo, branch,
     exact commit, toolchain (gcc-8/musl), build command.
-- [ ] Layout:
+  - [x] Linux `riscpc-emu` is public at the exact pinned/provenance commit
+        `36ea1cf6b8d1c802f4121a8032d4f5d58f5a8283`.
+  - [ ] Publish QEMU commit `89ce8897efa6e104576460345d1911986029f195`
+        before pushing the parent binary update. The local branch contains seven
+        new commits on a patch-equivalent but differently hashed copy of the 11
+        commits now on `origin/armv4-boards`; reconcile that history rather than
+        claiming the current hash is already public.
+- [x] Layout:
   ```
   frontend/          # index.html, css/svg art, xterm glue, coi-serviceworker
   build/             # emsdk Dockerfile + scripts for deps (glib, zlib, pixman, libffi) and QEMU
@@ -80,9 +92,11 @@ quadrature mouse.
   .github/workflows/pages.yml
   PLAN.md            # this file
   ```
-- [ ] Commit prebuilt kernel/rootfs as plain files (3.6 MB + ~4 MB cpio + 32 MB ext2 —
-      all under Pages/repo limits). Kernel is built **locally** with the gcc-8
-      toolchain; CI must not try to build it (wrong gcc = silently degraded config).
+- [x] Commit the two prebuilt kernels (about 3.6 MB each), 0.8 MB BusyBox
+      initramfs and 43 MB Wasm emulator as plain files, all under Pages/repo
+      limits. Writable IDE/floppy images are visitor-supplied instead of a
+      committed 32 MB factory disk. Kernels are built **locally** with the gcc-8
+      toolchain; CI must not try to build them (wrong gcc = silently degraded config).
 
 ## Phase 1 — Serial-console MVP: "the bring-up bench" (2–4 focused days)
 
@@ -348,7 +362,7 @@ independent guest surfaces.
       SPECIFICATION has a variable-length parameter phase and its NRP bit was
       interpreted backwards. A new qtest covers short commands both with and
       without a result phase; all 16 FDC qtests pass.
-- [ ] Explicitly **out of scope**: networking (browsers have no raw sockets; a
+- [x] Explicitly **out of scope**: networking (browsers have no raw sockets; a
       WebSocket proxy would break the "pure static page" constraint).
 
 ## Phase 4 — Ecosystem / stretch (ongoing)
@@ -362,7 +376,13 @@ independent guest surfaces.
 - [ ] Send the four pending patches (`~/linux-work/patches/`, needs Karl's
       `git send-email`) — cover letters can now cite the live demo URL as evidence
       that mach-rpc has users.
-- [ ] "About" page: the bug-hunt story, links to patches, how the emulation works.
+- [x] **About page**: `frontend/about.html` tells the data-sheet-first bug-hunt
+      story, links the three public Linux fixes and the public QEMU IDE fix,
+      records the NetBSD and FIQ findings, and diagrams the browser → Emscripten
+      → QEMU → RiscPC → Linux path. It is linked from the live-machine footer,
+      lays out at desktop and 390 px mobile widths, and the deployment gate
+      verifies six findings, four commit links, five architecture stages and no
+      horizontal overflow.
 - [ ] Upstream the machine models (riscpc, netwinder, acorn-iomd, dc21285,
       sl82c105) with `tests/functional/` entries; collie is the precedent.
 - [ ] Adopt the upstream Wasm TCG backend when merged (free speed-up over TCI).

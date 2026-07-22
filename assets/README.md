@@ -10,7 +10,7 @@ the public commit it was built from.**
 | `zImage-7.1.4` | Linux 7.1.4 stable for `ARCH_RPC`, md5 `e0ef1cbbfecb652ce6a3712d742fb624` | kernel.org stable commit [`7a5cef0db4795d9d453a12e0f61b5b7634fc4d40`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/commit/?id=7a5cef0db4795d9d453a12e0f61b5b7634fc4d40) plus only upstream commit [`470ea955a18c`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=470ea955a18c76eeb10ca11ffcb2fe923bfc5515), which fixes the RiscPC ARM zImage build — gcc-8 build and boot-verified | GPL-2.0 |
 | `zImage-7.1.4.config` | exact kernel config used for `zImage-7.1.4` | same source, seeded from `zImage.config` then normalized with `olddefconfig` | GPL-2.0 |
 | `initramfs-busybox.cpio.gz` | BusyBox userspace, static musl, strict ARMv4 | BusyBox (GPL-2.0) + musl (MIT), built with the `armv4-tc` musl cross toolchain; recipe import into `build/` is a Phase 1 task | GPL-2.0 / MIT |
-| `qemu/qemu-system-arm.wasm` | the emulator, wasm64/TCI, md5 `1f6508c2c92265d7ab0d7653287b057a` | [kmehltretter82/qemu](https://github.com/kmehltretter82/qemu) branch `armv4-boards`, commit `53e1cf80d72127f4e3f5c1a9467ed299619005e5`, built by `build/build-qemu.sh` with emsdk 4.0.10 | GPL-2.0 |
+| `qemu/qemu-system-arm.wasm` | the emulator, wasm64/TCI, md5 `cd1ec6389b72514d7a5898a035671a56` | [kmehltretter82/qemu](https://github.com/kmehltretter82/qemu) branch `armv4-boards`, commit `89ce8897efa6e104576460345d1911986029f195`, built by `build/build-qemu.sh` with emsdk 4.0.10 | GPL-2.0 |
 | `qemu/qemu-system-arm.js` | its Emscripten loader plus the browser display/input bridge and IDBFS support, md5 `08a54441b64539548db5ea2ae14dd5ee` | same build; bridge source is `build/display-canvas.js` in this repository | GPL-2.0 |
 
 ## Why the emulator is prebuilt too
@@ -52,5 +52,6 @@ Boot (native QEMU from the `qemu` submodule, branch `armv4-boards`):
 
 ```sh
 qemu-system-arm -M riscpc -kernel zImage -initrd initramfs-busybox.cpio.gz \
-    -append 'console=tty0 console=ttyS0 rdinit=/init' -serial stdio
+    -append 'console=tty0 console=ttyS0 rdinit=/init' -serial stdio \
+    -drive file=floppy.img,format=raw,if=floppy,index=0
 ```

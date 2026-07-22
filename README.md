@@ -22,6 +22,11 @@ The open internal IDE bay accepts a raw disk image before power-on. Linux sees
 it as a real read/write ATA disk, and **DOWNLOAD DISK** exports the modified
 image back to the host (run `sync` in the guest first).
 
+The front-panel floppy slot is live as well: click it to insert a supported
+raw floppy image before power-on. Linux reaches it through the RiscPC's
+82C711-compatible controller and ARM FIQ pseudo-DMA path, and **DOWNLOAD
+FLOPPY** returns the writable image to the host.
+
 The serial connection is drawn from the RISC PC to the VT220-style terminal.
 Its full LK201-style keyboard is clickable, sends input to the guest, and
 mirrors key-down/key-up animation from a physical PC or Mac keyboard.
@@ -32,8 +37,8 @@ See [PLAN.md](PLAN.md) for the full roadmap:
    UART; boots to an interactive shell. *(done)*
 2. **The machine wakes up** — VIDC20 framebuffer, IOMD PS/2 keyboard,
    quadrature mouse. *(done)*
-3. **Clickable storage** — IDE image upload/download and opt-in browser
-   persistence *(done)*; floppy emulation remains.
+3. **Clickable storage** — IDE image upload/download, opt-in browser
+   persistence, and front-panel floppy upload/download. *(done)*
 
 ## Layout
 

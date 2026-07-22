@@ -123,6 +123,36 @@ def main():
         print(f"IDE image selection: "
               f"{'ready' if disk_selection_ok else 'FAILED'} {disk_selection}")
 
+        # The physical front-panel slot is the floppy picker. Use its click
+        # path (not the hidden input directly), then carry a standard 1.44 MB
+        # raw image through the emulated FDC and back out through DOWNLOAD.
+        floppy_bytes = bytes(1440 * 1024)
+        with page.expect_file_chooser() as chooser_info:
+            page.click("#floppy-drive")
+        chooser_info.value.set_files({
+            "name": "browser-floppy.img",
+            "mimeType": "application/octet-stream",
+            "buffer": floppy_bytes,
+        })
+        page.wait_for_function(
+            "document.querySelector('#floppy-status').textContent.includes('is ready')"
+        )
+        floppy_selection = page.evaluate("""() => ({
+            inserted: document.querySelector('#floppy-drive').classList.contains('has-disk'),
+            title: document.querySelector('#floppy-drive').title,
+            status: document.querySelector('#floppy-status').textContent,
+            downloadDisabled: document.querySelector('#floppy-download').disabled,
+        })""")
+        floppy_selection_ok = (
+            floppy_selection["inserted"]
+            and "browser-floppy.img" in floppy_selection["title"]
+            and "1.4 MiB" in floppy_selection["title"]
+            and floppy_selection["downloadDisabled"]
+        )
+        print("floppy image selection: "
+              f"{'ready' if floppy_selection_ok else 'FAILED'} "
+              f"{floppy_selection}")
+
         # The xterm canvas is sized from measured glyphs. Safari's ui-monospace
         # metrics are wider than Chromium's, so guard against any renderer
         # escaping the terminal bezel or the bezel escaping the viewport.
@@ -181,12 +211,12 @@ def main():
             return out.join('\\n');
         }"""
 
-        def download_disk():
+        def download_image(selector, marker_offset):
             with page.expect_download(timeout=10000) as download_info:
-                page.click("#ide-download")
+                page.click(selector)
             download = download_info.value
             with open(download.path(), "rb") as exported:
-                exported.seek(4096)
+                exported.seek(marker_offset)
                 marker = exported.read(7)
                 exported.seek(0, 2)
                 exported_size = exported.tell()
@@ -195,6 +225,12 @@ def main():
                 "size": exported_size,
                 "marker": marker,
             }
+
+        def download_disk():
+            return download_image("#ide-download", 4096)
+
+        def download_floppy():
+            return download_image("#floppy-download", 512)
 
         deadline = TIMEOUT * 1000
         step = 2000
@@ -211,6 +247,9 @@ def main():
                 print(f"  {waited//1000}s: {tail}")
 
         booted = WANT in text and KERNEL_BANNER in text
+        floppy_probe_ok = "FDC 0 is a S82078B" in text
+        print("RiscPC floppy controller: "
+              f"{'detected' if floppy_probe_ok else 'MISSING'}")
 
         # The RISC PC monitor is a separate VIDC20 framebuffer. A visible
         # canvas is not enough: sample the pixels to prove QEMU actually drew
@@ -400,6 +439,45 @@ def main():
             print(f"IDE upload/write/download: "
                   f"{'works' if ide_round_trip_ok else 'FAILED'} {ide_round_trip}")
 
+        # Exercise the ARM FIQ pseudo-DMA path in the Wasm build. The exported
+        # byte marker proves the whole slot -> MEMFS -> QEMU FDC -> Linux block
+        # device -> MEMFS -> browser download path, not just controller probe.
+        floppy_round_trip_ok = False
+        floppy_round_trip = {}
+        if ide_round_trip_ok and floppy_probe_ok:
+            command = (
+                "printf RPCFLOP|dd of=/dev/fd0 bs=512 seek=1 conv=notrunc "
+                "2>/dev/null&&sync&&echo FLOPPY_OK"
+            )
+            page.click("#terminal")
+            page.keyboard.type(command)
+            page.keyboard.press("Enter")
+            for _ in range(60):
+                page.wait_for_timeout(1000)
+                after = page.evaluate(read_buffer)
+                if any(line.strip() == "FLOPPY_OK" for line in after.split("\n")):
+                    text = after
+                    break
+
+            marker_written = any(
+                line.strip() == "FLOPPY_OK" for line in text.split("\n")
+            )
+            download_enabled = page.locator("#floppy-download").is_enabled()
+            if marker_written and download_enabled:
+                exported = download_floppy()
+                floppy_round_trip = {
+                    **exported,
+                    "marker": exported["marker"].decode("ascii", errors="replace"),
+                }
+                floppy_round_trip_ok = (
+                    exported["name"] == "modified-browser-floppy.img"
+                    and exported["size"] == len(floppy_bytes)
+                    and exported["marker"] == b"RPCFLOP"
+                )
+            print("floppy upload/write/download: "
+                  f"{'works' if floppy_round_trip_ok else 'FAILED'} "
+                  f"{floppy_round_trip}")
+
         persistence_save_ok = False
         persistence_save = {}
         if ide_round_trip_ok:
@@ -429,6 +507,7 @@ def main():
         # terminates the Wasm pthread) and return to a clean powered-off scene.
         hard_off_ok = False
         if (virtual_keys_ok and machine_input_ok and ide_round_trip_ok
+                and floppy_round_trip_ok
                 and persistence_save_ok):
             try:
                 page.wait_for_function("!document.querySelector('#power').disabled")
@@ -448,6 +527,10 @@ def main():
                         "el => el.classList.contains('has-disk')"
                     )
                     and page.locator("#ide-download").is_disabled()
+                    and not page.locator("#floppy-drive").evaluate(
+                        "el => el.classList.contains('has-disk')"
+                    )
+                    and page.locator("#floppy-download").is_disabled()
                     and page.locator("#ide-saved-choice").is_visible()
                     and not page.locator("#ide-use-saved").is_checked()
                 )
@@ -507,10 +590,13 @@ def main():
                     page.click("#power")
 
         ok = (hardware_ok and selector_ok and disk_selection_ok
+              and floppy_selection_ok
               and layout_ok and booted
+              and floppy_probe_ok
               and display_ok and prompt_visible and typed_ok
               and machine_input_ok and virtual_keys_ok
-              and ide_round_trip_ok and persistence_save_ok and hard_off_ok
+              and ide_round_trip_ok and floppy_round_trip_ok
+              and persistence_save_ok and hard_off_ok
               and persistence_restore_ok and factory_reset_ok)
 
         print("\n--- terminal ---")
@@ -521,10 +607,13 @@ def main():
         print(f"\nRESULT: {'PASS' if ok else 'FAIL'} "
               f"(hardware={hardware_ok}, selector={selector_ok}, "
               f"disk_select={disk_selection_ok}, "
+              f"floppy_select={floppy_selection_ok}, "
               f"layout={layout_ok}, boot={booted}, prompt={prompt_visible}, "
+              f"floppy_probe={floppy_probe_ok}, "
               f"display={display_ok}, physical_input={typed_ok}, "
               f"machine_input={machine_input_ok}, virtual_input={virtual_keys_ok}, "
               f"ide_round_trip={ide_round_trip_ok}, "
+              f"floppy_round_trip={floppy_round_trip_ok}, "
               f"idbfs_save={persistence_save_ok}, hard_off={hard_off_ok}, "
               f"idbfs_restore={persistence_restore_ok}, "
               f"factory_reset={factory_reset_ok})")

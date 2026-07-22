@@ -334,16 +334,31 @@ independent guest surfaces.
       disk underneath the running guest. The browser regression verifies
       save → hard reload → restore and factory reset → hard reload → restore.
       Default stays ephemeral.
-- [ ] **Floppy** — the marquee interaction (click floppy slot → upload image):
-      model the 82C711-combo FDC (QEMU's `fdc` core) wired for the ARM FIQ
-      pseudo-DMA transfer style the kernel driver uses. The fiddly one; do last.
-      Note: adding the FDC removes our accidental reproducer for the floppy
-      init-path bug (patch 0001) — keep a no-FDC machine option for regression use.
+- [x] **Floppy** — the front-panel slot is a real button: click it before
+      power-on to insert any raw geometry listed in QEMU's `fd_formats` table.
+      The Wasm launch writes the image to MEMFS and attaches it read/write as
+      floppy unit 0; `DOWNLOAD FLOPPY` exports the current copy. QEMU commit
+      `058c052d50d5` models the 82C711-compatible word-spaced FDC registers,
+      normal completion IRQ and the two-address ARM FIQ pseudo-DMA transfer
+      window. `-M riscpc,floppy=off` preserves the no-controller regression.
+      The browser test boots stable Linux, detects `FDC 0 is a S82078B`, writes
+      `RPCFLOP` through `/dev/fd0`, downloads the 1.44 MiB image and verifies
+      the marker at byte 512. It also retains the full IDE/persistence suite.
+      QEMU's shared 82078 core needed a real fix discovered here: DRIVE
+      SPECIFICATION has a variable-length parameter phase and its NRP bit was
+      interpreted backwards. A new qtest covers short commands both with and
+      without a result phase; all 16 FDC qtests pass.
 - [ ] Explicitly **out of scope**: networking (browsers have no raw sockets; a
       WebSocket proxy would break the "pure static page" constraint).
 
 ## Phase 4 — Ecosystem / stretch (ongoing)
 
+- [ ] Investigate the legacy ARM FIQ descriptor warning exposed by the first
+      floppy data transfer. `enable_fiq()` reaches generic `enable_irq()` on a
+      descriptor that mach-rpc installed but never activated, triggering
+      `irq_startup()`'s `!irqd_is_activated()` warning. Transfers still complete
+      and round-trip correctly. This is recorded as a kernel-side candidate;
+      the shipped kernels deliberately remain unchanged.
 - [ ] Send the four pending patches (`~/linux-work/patches/`, needs Karl's
       `git send-email`) — cover letters can now cite the live demo URL as evidence
       that mach-rpc has users.

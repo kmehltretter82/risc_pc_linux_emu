@@ -78,9 +78,44 @@ code { color: var(--amber); }
   color: #555; letter-spacing: .12em; border: 1px solid #999; padding: 1px 5px; border-radius: 2px;
 }
 .floppy-slot {
-  position: absolute; left: 12px; bottom: 10px; width: 110px; height: 8px;
-  background: #222; border-radius: 2px; box-shadow: inset 0 1px 2px #000;
+  position: absolute; left: 8px; bottom: 3px; width: 120px; height: 23px;
+  margin: 0; padding: 0; cursor: pointer; border: 0; border-radius: 3px;
+  background: transparent;
 }
+.floppy-slot::before {
+  content: ""; position: absolute; left: 4px; top: 7px; width: 110px; height: 8px;
+  border: 1px solid #4b4b48; border-radius: 2px;
+  background: #222; box-shadow: inset 0 1px 2px #000;
+}
+.floppy-slot.has-disk::after {
+  content: ""; position: absolute; left: 9px; top: 10px; width: 100px; height: 5px;
+  border-radius: 0 0 2px 2px; background: linear-gradient(#9a968d, #68645d);
+  box-shadow: 0 1px 1px rgba(0,0,0,.65);
+}
+.floppy-slot:hover:not(:disabled)::before { border-color: #817659; }
+.floppy-slot:active:not(:disabled)::before { transform: translateY(1px); }
+.floppy-slot:focus-visible { outline: 2px solid #176fa8; outline-offset: 1px; }
+.floppy-slot:disabled { cursor: default; }
+.floppy-slot:disabled::before { opacity: .72; }
+.floppy-media-controls {
+  width: 360px; min-height: 24px; display: flex; align-items: center; gap: 6px;
+  padding: 4px 5px 0; color: #82796d;
+}
+.floppy-media-controls p {
+  min-width: 0; flex: 1; margin: 0; overflow: hidden; font-size: .48rem;
+  line-height: 1.35; text-overflow: ellipsis; white-space: nowrap;
+}
+#floppy-download {
+  flex: 0 0 auto; padding: 3px 5px; color: #a9a49a; cursor: pointer;
+  font: inherit; font-size: .45rem; letter-spacing: .025em;
+  background: linear-gradient(#4e5355, #34383a); border: 1px solid #252829;
+  border-bottom-width: 2px; border-radius: 3px;
+}
+#floppy-download:active:not(:disabled) {
+  border-bottom-width: 1px; transform: translateY(1px);
+}
+#floppy-download:disabled { color: #706e69; opacity: .5; cursor: default; }
+.floppy-media-controls + .drive-bay { margin-top: 8px; }
 .controls { position: absolute; right: 12px; top: 0; height: 100%; display: flex; align-items: center; gap: 10px; }
 .led { width: 9px; height: 9px; border-radius: 50%; background: #3a2; background: #442; box-shadow: none; transition: all .3s; }
 .led.on { background: #5f5; box-shadow: 0 0 8px #5f5; }

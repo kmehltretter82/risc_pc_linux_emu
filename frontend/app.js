@@ -24,6 +24,15 @@ const KERNEL_STORAGE_KEY = "riscpc-boot-kernel";
 const QEMU_JS = "assets/qemu/qemu-system-arm.js";
 const IDE_PATH = "/assets/hda.img";
 const IDE_MAX_BYTES = 512 * 1024 * 1024;
+const FLOPPY_PATH = "/assets/fd0.img";
+// Exact sector counts accepted by QEMU's fd_formats table. Restricting raw
+// uploads here prevents a plausible-looking but mis-sized image from silently
+// being treated as the controller's fallback 1.44 MB geometry.
+const FLOPPY_FORMAT_BYTES = new Set([
+  320, 360, 640, 720, 820, 840, 1440, 1600, 1640, 1660, 1760, 2080,
+  2240, 2400, 2880, 2952, 2988, 3200, 3360, 3444, 3486, 3520, 3680,
+  3840, 5760, 6240, 6400, 7040, 7680,
+].map((sectors) => sectors * 512));
 const IDE_PERSIST_ROOT = "/persist";
 const IDE_PERSIST_CURRENT = `${IDE_PERSIST_ROOT}/hda.img`;
 const IDE_PERSIST_FACTORY = `${IDE_PERSIST_ROOT}/factory.img`;
@@ -610,11 +619,18 @@ const ideUseSaved = document.getElementById("ide-use-saved");
 const ideSave = document.getElementById("ide-save");
 const ideReset = document.getElementById("ide-reset");
 const ideStatus = document.getElementById("ide-status");
+const floppyDrive = document.getElementById("floppy-drive");
+const floppyUpload = document.getElementById("floppy-upload");
+const floppyDownload = document.getElementById("floppy-download");
+const floppyStatus = document.getElementById("floppy-status");
 let powerState = "off";
 let selectedIdeImage = null;
 let activeIdeImage = null;
+let selectedFloppyImage = null;
+let activeFloppyImage = null;
 let activeQemuModule = null;
 let ideLoading = false;
+let floppyLoading = false;
 let persistenceBusy = false;
 let persistenceReady = false;
 
@@ -683,6 +699,26 @@ function lockIdeSelection(locked) {
   ideUseSaved.disabled = locked || ideLoading;
 }
 
+function updateFloppyControls() {
+  const image = selectedFloppyImage || activeFloppyImage;
+  floppyDrive.classList.toggle("has-disk", Boolean(image));
+  floppyDrive.setAttribute(
+    "aria-label",
+    image
+      ? `Replace floppy disk image ${image.name}`
+      : "Select a raw floppy disk image",
+  );
+  floppyDrive.title = image
+    ? `${image.name} · ${formatBytes(image.size)}`
+    : "Click to insert a raw floppy disk image";
+  floppyDownload.disabled = !(activeQemuModule && activeFloppyImage);
+}
+
+function lockFloppySelection(locked) {
+  floppyDrive.disabled = locked || floppyLoading;
+  floppyUpload.disabled = locked || floppyLoading;
+}
+
 function selectedIdeForBoot() {
   if (ideUseSaved.checked && savedIdeImage) return savedIdeImage;
   return selectedIdeImage;
@@ -735,6 +771,43 @@ ideUpload.addEventListener("change", async () => {
   }
 });
 
+floppyDrive.addEventListener("click", () => floppyUpload.click());
+floppyUpload.addEventListener("change", async () => {
+  const file = floppyUpload.files?.[0];
+  if (!file) return;
+
+  floppyLoading = true;
+  lockFloppySelection(true);
+  if (powerState === "off") powerBtn.disabled = true;
+  floppyStatus.textContent = `READING ${file.name}…`;
+  try {
+    if (!file.size) throw new Error("The floppy image is empty.");
+    if (!FLOPPY_FORMAT_BYTES.has(file.size)) {
+      throw new Error(
+        "Unsupported raw floppy geometry. Use a standard 360K, 720K, " +
+        "1.2M, 1.44M, or 2.88M image.",
+      );
+    }
+    selectedFloppyImage = {
+      name: file.name,
+      size: file.size,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    };
+    activeFloppyImage = null;
+    floppyStatus.textContent =
+      `${file.name} is ready · ${formatBytes(file.size)} · inserts at power-on`;
+  } catch (err) {
+    selectedFloppyImage = null;
+    floppyStatus.textContent = err.message;
+  } finally {
+    floppyLoading = false;
+    lockFloppySelection(powerState !== "off");
+    if (powerState === "off") powerBtn.disabled = false;
+    updateFloppyControls();
+    floppyUpload.value = "";
+  }
+});
+
 ideUseSaved.addEventListener("change", () => {
   if (ideUseSaved.checked && savedIdeImage) {
     ideStatus.textContent =
@@ -765,6 +838,25 @@ ideDownload.addEventListener("click", () => {
       "to include its latest cached writes.";
   } catch (err) {
     ideStatus.textContent = `Could not export the disk: ${err.message}`;
+  }
+});
+
+floppyDownload.addEventListener("click", () => {
+  if (!activeQemuModule || !activeFloppyImage) return;
+  try {
+    const bytes = activeQemuModule.FS.readFile(FLOPPY_PATH);
+    const url = URL.createObjectURL(new Blob([bytes], {
+      type: "application/octet-stream",
+    }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = safeDownloadName(activeFloppyImage.name);
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    floppyStatus.textContent =
+      `Exported ${activeFloppyImage.name} · sync the guest before downloading`;
+  } catch (err) {
+    floppyStatus.textContent = `Could not export the floppy: ${err.message}`;
   }
 });
 
@@ -825,6 +917,7 @@ ideReset.addEventListener("click", async () => {
 });
 
 updateIdeControls();
+updateFloppyControls();
 if (savedIdeImage) {
   ideStatus.textContent =
     `${savedIdeImage.name} is stored in this browser. Tick BOOT SAVED COPY ` +
@@ -886,6 +979,7 @@ powerBtn.addEventListener("click", async () => {
   powerBtn.disabled = true;
   lockKernelSelection(true);
   lockIdeSelection(true);
+  lockFloppySelection(true);
   led.classList.add("busy");
   try {
     await powerOn();
@@ -902,6 +996,7 @@ powerBtn.addEventListener("click", async () => {
     powerBtn.disabled = false;
     lockKernelSelection(false);
     lockIdeSelection(false);
+    lockFloppySelection(false);
   }
 });
 
@@ -959,10 +1054,10 @@ async function powerOn() {
   const kernel = await fetchWithProgress(choice.url, `kernel ${choice.version}`);
   const initrd = await fetchWithProgress(ASSETS.initrd, "initramfs");
   term.writeln("");
-  await bootQemu(kernel, initrd, selectedIdeForBoot());
+  await bootQemu(kernel, initrd, selectedIdeForBoot(), selectedFloppyImage);
 }
 
-async function bootQemu(kernel, initrd, ideImage) {
+async function bootQemu(kernel, initrd, ideImage, floppyImage) {
   term.reset();
   term.focus();
 
@@ -1026,6 +1121,11 @@ async function bootQemu(kernel, initrd, ideImage) {
       "-drive", `file=${IDE_PATH},format=raw,if=ide,index=0`,
     );
   }
+  if (floppyImage) {
+    qemuArguments.push(
+      "-drive", `file=${FLOPPY_PATH},format=raw,if=floppy,index=0`,
+    );
+  }
   let persistenceLoadError = null;
 
   // The build is MODULARIZE'd and emits an ES module exporting a factory,
@@ -1080,6 +1180,9 @@ async function bootQemu(kernel, initrd, ideImage) {
         } else if (ideImage) {
           moduleArg.FS.writeFile(IDE_PATH, ideImage.bytes);
         }
+        if (floppyImage) {
+          moduleArg.FS.writeFile(FLOPPY_PATH, floppyImage.bytes);
+        }
       },
     ],
     onAbort: (what) => {
@@ -1104,6 +1207,7 @@ async function bootQemu(kernel, initrd, ideImage) {
       powerBtn.disabled = false;
       lockKernelSelection(false);
       lockIdeSelection(false);
+      lockFloppySelection(false);
       powerBtn.title = "Power on";
       powerBtn.setAttribute("aria-pressed", "false");
     },
@@ -1117,6 +1221,10 @@ async function bootQemu(kernel, initrd, ideImage) {
     size: ideImage.size,
     source: ideImage.source,
   } : null;
+  activeFloppyImage = floppyImage ? {
+    name: floppyImage.name,
+    size: floppyImage.size,
+  } : null;
   if (persistenceLoadError) {
     ideStatus.textContent =
       `The saved disk could not be restored (${persistenceLoadError.message}). ` +
@@ -1127,4 +1235,9 @@ async function bootQemu(kernel, initrd, ideImage) {
       "before downloading a modified copy.";
   }
   updateIdeControls();
+  if (activeFloppyImage) {
+    floppyStatus.textContent =
+      `${activeFloppyImage.name} is inserted read/write · sync before downloading`;
+  }
+  updateFloppyControls();
 }

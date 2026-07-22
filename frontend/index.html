@@ -31,12 +31,25 @@
     </div>
     <div class="case">
       <span class="badge">RISC PC 600</span>
-      <div class="floppy-slot" title="Floppy drive — Phase 3"></div>
+      <button type="button" class="floppy-slot" id="floppy-drive"
+              aria-label="Select a raw floppy disk image"
+              aria-describedby="floppy-status"
+              title="Click to insert a raw floppy disk image"></button>
       <div class="controls">
         <span class="led" id="power-led"></span>
         <button id="power" title="Power on" aria-pressed="false">POWER</button>
       </div>
       <span class="serial-plug serial-plug-case" id="serial-plug-case" aria-hidden="true"></span>
+    </div>
+    <div class="floppy-media-controls">
+      <input type="file" id="floppy-upload" hidden
+             accept=".img,.ima,.raw,.bin,application/octet-stream">
+      <p id="floppy-status" aria-live="polite">
+        FLOPPY EMPTY · CLICK THE SLOT TO INSERT A RAW IMAGE
+      </p>
+      <button type="button" id="floppy-download" disabled>
+        DOWNLOAD FLOPPY
+      </button>
     </div>
     <fieldset class="drive-bay" id="drive-bay" aria-describedby="ide-status">
       <legend>INTERNAL IDE BAY</legend>

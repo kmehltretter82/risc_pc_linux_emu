@@ -22,6 +22,8 @@ const KERNELS = Object.freeze({
 const KERNEL_STORAGE_KEY = "riscpc-boot-kernel";
 // Prebuilt by build/build-qemu.sh; provenance in assets/README.md.
 const QEMU_JS = "assets/qemu/qemu-system-arm.js";
+const IDE_PATH = "/assets/hda.img";
+const IDE_MAX_BYTES = 512 * 1024 * 1024;
 
 // QEMU argv. -serial stdio is picked up by emscripten as the module's stdout,
 // which is proxied from the worker running main() back to this thread.
@@ -595,7 +597,100 @@ const led = document.getElementById("power-led");
 const kernelSelector = document.getElementById("kernel-selector");
 const kernelSelection = document.getElementById("kernel-selection");
 const kernelInputs = [...document.querySelectorAll('input[name="kernel"]')];
+const ideDrive = document.getElementById("ide-drive");
+const ideDriveLabel = document.getElementById("ide-drive-label");
+const ideUpload = document.getElementById("ide-upload");
+const ideDownload = document.getElementById("ide-download");
+const ideStatus = document.getElementById("ide-status");
 let powerState = "off";
+let selectedIdeImage = null;
+let activeIdeImage = null;
+let activeQemuModule = null;
+let ideLoading = false;
+
+function formatBytes(bytes) {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KiB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MiB`;
+}
+
+function safeDownloadName(name) {
+  const leaf = name.replace(/^.*[\\/]/, "").replace(/[^A-Za-z0-9._-]+/g, "_");
+  return `modified-${leaf || "riscpc-disk.img"}`;
+}
+
+function updateIdeControls() {
+  const image = selectedIdeImage || activeIdeImage;
+  ideDrive.classList.toggle("has-disk", Boolean(image));
+  ideDriveLabel.textContent = image
+    ? `${image.name} · ${formatBytes(image.size)}`
+    : "EMPTY · CLICK TO FIT";
+  ideDownload.disabled = !(activeQemuModule && activeIdeImage);
+}
+
+function lockIdeSelection(locked) {
+  ideDrive.disabled = locked || ideLoading;
+  ideUpload.disabled = locked || ideLoading;
+}
+
+ideDrive.addEventListener("click", () => ideUpload.click());
+ideUpload.addEventListener("change", async () => {
+  const file = ideUpload.files?.[0];
+  if (!file) return;
+
+  ideLoading = true;
+  lockIdeSelection(true);
+  if (powerState === "off") powerBtn.disabled = true;
+  ideStatus.textContent = `Reading ${file.name}…`;
+  try {
+    if (!file.size) throw new Error("The disk image is empty.");
+    if (file.size > IDE_MAX_BYTES) {
+      throw new Error("Disk images are limited to 512 MiB in this browser build.");
+    }
+    if (file.size % 512) {
+      throw new Error("A raw IDE image must contain a whole number of 512-byte sectors.");
+    }
+    selectedIdeImage = {
+      name: file.name,
+      size: file.size,
+      bytes: new Uint8Array(await file.arrayBuffer()),
+    };
+    activeIdeImage = null;
+    activeQemuModule = null;
+    ideStatus.textContent =
+      `${file.name} is ready. It will attach as the primary IDE disk at power-on.`;
+  } catch (err) {
+    selectedIdeImage = null;
+    ideStatus.textContent = err.message;
+  } finally {
+    ideLoading = false;
+    lockIdeSelection(powerState !== "off");
+    if (powerState === "off") powerBtn.disabled = false;
+    updateIdeControls();
+    ideUpload.value = "";
+  }
+});
+
+ideDownload.addEventListener("click", () => {
+  if (!activeQemuModule || !activeIdeImage) return;
+  try {
+    const bytes = activeQemuModule.FS.readFile(IDE_PATH);
+    const url = URL.createObjectURL(new Blob([bytes], {
+      type: "application/octet-stream",
+    }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = safeDownloadName(activeIdeImage.name);
+    anchor.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    ideStatus.textContent =
+      `Exported ${activeIdeImage.name}. Run sync in the guest before exporting ` +
+      "to include its latest cached writes.";
+  } catch (err) {
+    ideStatus.textContent = `Could not export the disk: ${err.message}`;
+  }
+});
+updateIdeControls();
 
 function restoreKernelSelection() {
   let key = "current";
@@ -651,6 +746,7 @@ powerBtn.addEventListener("click", async () => {
   powerState = "starting";
   powerBtn.disabled = true;
   lockKernelSelection(true);
+  lockIdeSelection(true);
   led.classList.add("busy");
   try {
     await powerOn();
@@ -666,6 +762,7 @@ powerBtn.addEventListener("click", async () => {
     term.writeln(`\r\n\x1b[31m${err.message}\x1b[0m`);
     powerBtn.disabled = false;
     lockKernelSelection(false);
+    lockIdeSelection(false);
   }
 });
 
@@ -723,10 +820,10 @@ async function powerOn() {
   const kernel = await fetchWithProgress(choice.url, `kernel ${choice.version}`);
   const initrd = await fetchWithProgress(ASSETS.initrd, "initramfs");
   term.writeln("");
-  await bootQemu(kernel, initrd);
+  await bootQemu(kernel, initrd, selectedIdeImage);
 }
 
-async function bootQemu(kernel, initrd) {
+async function bootQemu(kernel, initrd, ideImage) {
   term.reset();
   term.focus();
 
@@ -783,10 +880,17 @@ async function bootQemu(kernel, initrd) {
   const writeLine = (line) =>
     term.write(line.replace(/\n/g, "\r\n") + "\r\n");
 
+  const qemuArguments = [...QEMU_ARGS];
+  if (ideImage) {
+    qemuArguments.push(
+      "-drive", `file=${IDE_PATH},format=raw,if=ide,index=0`,
+    );
+  }
+
   // The build is MODULARIZE'd and emits an ES module exporting a factory,
   // so this is a dynamic import rather than a <script> tag.
   const moduleArg = {
-    arguments: QEMU_ARGS,
+    arguments: qemuArguments,
     stdout: writeSerialByte,
     print: writeLine,
     printErr: (line) => {
@@ -802,6 +906,7 @@ async function bootQemu(kernel, initrd) {
         moduleArg.FS.mkdir("/assets");
         moduleArg.FS.writeFile("/assets/zImage", kernel);
         moduleArg.FS.writeFile("/assets/initramfs-busybox.cpio.gz", initrd);
+        if (ideImage) moduleArg.FS.writeFile(IDE_PATH, ideImage.bytes);
       },
     ],
     onAbort: (what) => {
@@ -825,11 +930,20 @@ async function bootQemu(kernel, initrd) {
       led.classList.remove("on");
       powerBtn.disabled = false;
       lockKernelSelection(false);
+      lockIdeSelection(false);
       powerBtn.title = "Power on";
       powerBtn.setAttribute("aria-pressed", "false");
     },
   };
 
   const { default: createQemu } = await import(new URL(QEMU_JS, location.href).href);
-  await createQemu(moduleArg);
+  const instance = await createQemu(moduleArg);
+  activeQemuModule = instance;
+  activeIdeImage = ideImage ? { name: ideImage.name, size: ideImage.size } : null;
+  if (activeIdeImage) {
+    ideStatus.textContent =
+      `${activeIdeImage.name} is attached read/write. Run sync in the guest ` +
+      "before downloading a modified copy.";
+  }
+  updateIdeControls();
 }

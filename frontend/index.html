@@ -38,6 +38,30 @@
       </div>
       <span class="serial-plug serial-plug-case" id="serial-plug-case" aria-hidden="true"></span>
     </div>
+    <fieldset class="drive-bay" id="drive-bay" aria-describedby="ide-status">
+      <legend>INTERNAL IDE BAY</legend>
+      <div class="drive-controls">
+        <button type="button" class="hard-drive" id="ide-drive"
+                aria-label="Select a raw IDE hard disk image">
+          <span class="hard-drive-plate" aria-hidden="true">
+            <span class="hard-drive-platter"></span>
+            <span class="hard-drive-arm"></span>
+          </span>
+          <span class="hard-drive-copy">
+            <strong>IDE HARD DISC</strong>
+            <small id="ide-drive-label">EMPTY · CLICK TO FIT</small>
+          </span>
+        </button>
+        <button type="button" class="drive-download" id="ide-download" disabled>
+          DOWNLOAD DISK
+        </button>
+      </div>
+      <input type="file" id="ide-upload" hidden
+             accept=".img,.raw,.bin,application/octet-stream">
+      <p id="ide-status" aria-live="polite">
+        Optional raw disk image; select it before pressing POWER.
+      </p>
+    </fieldset>
     <fieldset class="kernel-tray" id="kernel-selector" aria-describedby="kernel-help">
       <legend>BOOT MODULE TRAY</legend>
       <div class="kernel-chips">

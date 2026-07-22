@@ -96,6 +96,33 @@ def main():
         print(f"kernel selector: {'stable selected' if selector_ok else 'FAILED'} "
               f"{selector}")
 
+        # Attach a tiny blank raw disk through the same file input a user gets
+        # by clicking the drawn internal HDD. Later the guest writes a marker
+        # through pata_platform and the download path must contain it.
+        disk_bytes = bytes(1024 * 1024)
+        page.locator("#ide-upload").set_input_files({
+            "name": "browser-test.img",
+            "mimeType": "application/octet-stream",
+            "buffer": disk_bytes,
+        })
+        page.wait_for_function(
+            "document.querySelector('#ide-status').textContent.includes('is ready')"
+        )
+        disk_selection = page.evaluate("""() => ({
+            fitted: document.querySelector('#ide-drive').classList.contains('has-disk'),
+            label: document.querySelector('#ide-drive-label').textContent,
+            status: document.querySelector('#ide-status').textContent,
+            downloadDisabled: document.querySelector('#ide-download').disabled,
+        })""")
+        disk_selection_ok = (
+            disk_selection["fitted"]
+            and "browser-test.img" in disk_selection["label"]
+            and "1.0 MiB" in disk_selection["label"]
+            and disk_selection["downloadDisabled"]
+        )
+        print(f"IDE image selection: "
+              f"{'ready' if disk_selection_ok else 'FAILED'} {disk_selection}")
+
         # The xterm canvas is sized from measured glyphs. Safari's ui-monospace
         # metrics are wider than Chromium's, so guard against any renderer
         # escaping the terminal bezel or the bezel escaping the viewport.
@@ -320,10 +347,56 @@ def main():
             print(f"on-screen LK201 input: "
                   f"{'works' if virtual_keys_ok else 'NO RESPONSE'}")
 
+        # Write through Linux's IDE block device, flush the guest cache, then
+        # export the MEMFS-backed raw image and verify the changed bytes. This
+        # checks upload -> QEMU -> pata_platform -> download as one round trip.
+        ide_round_trip_ok = False
+        ide_round_trip = {}
+        if virtual_keys_ok:
+            command = (
+                "printf RPCDISK|dd of=/dev/sda bs=512 seek=8 2>/dev/null"
+                "&&sync&&echo IDE_OK"
+            )
+            page.click("#terminal")
+            page.keyboard.type(command)
+            page.keyboard.press("Enter")
+            for _ in range(30):
+                page.wait_for_timeout(1000)
+                after = page.evaluate(read_buffer)
+                if any(line.strip() == "IDE_OK" for line in after.split("\n")):
+                    text = after
+                    break
+
+            marker_written = any(
+                line.strip() == "IDE_OK" for line in text.split("\n")
+            )
+            download_enabled = page.locator("#ide-download").is_enabled()
+            if marker_written and download_enabled:
+                with page.expect_download(timeout=10000) as download_info:
+                    page.click("#ide-download")
+                download = download_info.value
+                with open(download.path(), "rb") as exported:
+                    exported.seek(4096)
+                    marker = exported.read(7)
+                    exported.seek(0, 2)
+                    exported_size = exported.tell()
+                ide_round_trip = {
+                    "name": download.suggested_filename,
+                    "size": exported_size,
+                    "marker": marker.decode("ascii", errors="replace"),
+                }
+                ide_round_trip_ok = (
+                    download.suggested_filename == "modified-browser-test.img"
+                    and exported_size == len(disk_bytes)
+                    and marker == b"RPCDISK"
+                )
+            print(f"IDE upload/write/download: "
+                  f"{'works' if ide_round_trip_ok else 'FAILED'} {ide_round_trip}")
+
         # Once running, POWER is a hard switch: it must reload the page (which
         # terminates the Wasm pthread) and return to a clean powered-off scene.
         hard_off_ok = False
-        if virtual_keys_ok and machine_input_ok:
+        if virtual_keys_ok and machine_input_ok and ide_round_trip_ok:
             try:
                 page.wait_for_function("!document.querySelector('#power').disabled")
                 with page.expect_navigation(wait_until="load", timeout=10000):
@@ -338,14 +411,20 @@ def main():
                     and not led_on
                     and page.locator("#kernel-stable").is_checked()
                     and page.locator("#kernel-stable").is_enabled()
+                    and not page.locator("#ide-drive").evaluate(
+                        "el => el.classList.contains('has-disk')"
+                    )
+                    and page.locator("#ide-download").is_disabled()
                 )
             except Exception as exc:
                 console.append(f"[hard-off] {exc}")
             print(f"hard power off: {'works' if hard_off_ok else 'FAILED'}")
 
-        ok = (hardware_ok and selector_ok and layout_ok and booted
+        ok = (hardware_ok and selector_ok and disk_selection_ok
+              and layout_ok and booted
               and display_ok and prompt_visible and typed_ok
-              and machine_input_ok and virtual_keys_ok and hard_off_ok)
+              and machine_input_ok and virtual_keys_ok
+              and ide_round_trip_ok and hard_off_ok)
 
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
@@ -354,9 +433,11 @@ def main():
             print("\n".join(console[-25:]))
         print(f"\nRESULT: {'PASS' if ok else 'FAIL'} "
               f"(hardware={hardware_ok}, selector={selector_ok}, "
+              f"disk_select={disk_selection_ok}, "
               f"layout={layout_ok}, boot={booted}, prompt={prompt_visible}, "
               f"display={display_ok}, physical_input={typed_ok}, "
               f"machine_input={machine_input_ok}, virtual_input={virtual_keys_ok}, "
+              f"ide_round_trip={ide_round_trip_ok}, "
               f"hard_off={hard_off_ok})")
         browser.close()
         return 0 if ok else 1

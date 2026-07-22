@@ -320,9 +320,13 @@ independent guest surfaces.
 
 ## Phase 3 — Storage UX: clickable drives (≈1 week)
 
-- [ ] **IDE upload/download** (model exists): click the HDD → upload an image,
-      attach; "download disk" to export the modified image. Near-free — it's just
-      Emscripten-FS plumbing.
+- [x] **IDE upload/download** (model exists): click the drawn internal HDD →
+      select a sector-aligned raw image before power-on; QEMU attaches its
+      MEMFS copy read/write as IDE unit 0. "Download disk" exports the current
+      copy (the UI reminds users to run `sync` first). The browser regression
+      uploads a blank 1 MiB image, Linux detects `/dev/sda`, writes `RPCDISK`
+      through `pata_platform`, downloads it, and verifies the marker at byte
+      4096.
 - [ ] **Persistence (opt-in)**: mirror the disk to IndexedDB (IDBFS) —
       "Save disk" / "Reset to factory". Default stays ephemeral.
 - [ ] **Floppy** — the marquee interaction (click floppy slot → upload image):

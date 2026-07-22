@@ -18,6 +18,10 @@ Click the monitor and a physical keyboard and mouse are routed to the emulated
 KART/PS/2 port and quadrature mouse; click the terminal to return input to the
 serial UART.
 
+The open internal IDE bay accepts a raw disk image before power-on. Linux sees
+it as a real read/write ATA disk, and **DOWNLOAD DISK** exports the modified
+image back to the host (run `sync` in the guest first).
+
 The serial connection is drawn from the RISC PC to the VT220-style terminal.
 Its full LK201-style keyboard is clickable, sends input to the guest, and
 mirrors key-down/key-up animation from a physical PC or Mac keyboard.
@@ -28,7 +32,8 @@ See [PLAN.md](PLAN.md) for the full roadmap:
    UART; boots to an interactive shell. *(done)*
 2. **The machine wakes up** — VIDC20 framebuffer, IOMD PS/2 keyboard,
    quadrature mouse. *(done)*
-3. **Clickable storage** — upload/download IDE disk images, floppy.
+3. **Clickable storage** — IDE image upload/download *(done)*; opt-in
+   persistence and floppy emulation remain.
 
 ## Layout
 

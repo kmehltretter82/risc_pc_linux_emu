@@ -247,7 +247,7 @@ def main():
                 print(f"  {waited//1000}s: {tail}")
 
         booted = WANT in text and KERNEL_BANNER in text
-        floppy_probe_ok = "FDC 0 is a S82078B" in text
+        floppy_probe_ok = "FDC 0 is a post-1991 82077" in text
         print("RiscPC floppy controller: "
               f"{'detected' if floppy_probe_ok else 'MISSING'}")
 
@@ -590,7 +590,7 @@ def main():
                     page.click("#power")
 
         # The project story is a deployable page, not just prose in the source
-        # tree. Check its four patch links, findings, architecture flow and
+        # tree. Check its five patch links, findings, architecture flow and
         # responsive width as part of the same assembled-site gate.
         about_ok = False
         about = {}
@@ -609,8 +609,8 @@ def main():
             })""")
             about_ok = (
                 "Old machines" in about["title"]
-                and about["findings"] == 6
-                and about["patchLinks"] == 4
+                and about["findings"] == 7
+                and about["patchLinks"] == 5
                 and about["flowSteps"] == 5
                 and about["hasBackLink"]
                 and about["pageWidth"] <= about["viewportWidth"]

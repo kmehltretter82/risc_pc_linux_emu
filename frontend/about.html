@@ -122,6 +122,20 @@
       </article>
 
       <article class="finding-card">
+        <span class="finding-owner qemu">QEMU</span>
+        <h3>The RiscPC floppy was claiming to be an Intel 82078</h3>
+        <p>
+          The real machine uses an SMC FDC37C665 with an 82077AA-compatible
+          command set, but QEMU's shared core returned an S82078B part ID.
+          Giving the RiscPC subtype the correct command profile makes Linux
+          identify the controller accurately without changing PC machines.
+        </p>
+        <a class="patch-link" href="https://github.com/kmehltretter82/qemu/commit/0f0e03dca12fc704c4491eb8fe7dc505a9c4d55c">
+          QEMU machine-model fix →
+        </a>
+      </article>
+
+      <article class="finding-card">
         <span class="finding-owner qemu">QEMU + NETBSD</span>
         <h3>An independent guest found two deeper faults</h3>
         <p>

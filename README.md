@@ -24,8 +24,8 @@ image back to the host (run `sync` in the guest first).
 
 The front-panel floppy slot is live as well: click it to insert a supported
 raw floppy image before power-on. Linux reaches it through the RiscPC's
-82C711-compatible controller and ARM FIQ pseudo-DMA path, and **DOWNLOAD
-FLOPPY** returns the writable image to the host.
+82077AA-compatible SMC FDC37C665 controller and ARM FIQ pseudo-DMA path, and
+**DOWNLOAD FLOPPY** returns the writable image to the host.
 
 The serial connection is drawn from the RISC PC to the VT220-style terminal.
 Its full LK201-style keyboard is clickable, sends input to the guest, and

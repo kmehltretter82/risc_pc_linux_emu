@@ -80,12 +80,12 @@ quadrature mouse.
     submodule pins before CI is allowed to boot or deploy the site.
   - [x] Linux `riscpc-emu` is public at the exact pinned/provenance commit
         `36ea1cf6b8d1c802f4121a8032d4f5d58f5a8283`.
-  - [x] QEMU commit `f3d9daffc05611137446c4d9690eb3f981b2ab51` is public on
-        `armv4-boards`. On 2026-07-22 the seven new commits were rebased onto the
-        public, patch-equivalent 11-commit base and pushed as a fast-forward. The
-        resulting tree `80e0546ccf114f2cdba86d394d9a22983c03d7a0` is identical
-        to the pre-publication build tree, so the shipped Wasm binary remains an
-        exact build of the public source.
+  - [x] QEMU commit `0f0e03dca12fc704c4491eb8fe7dc505a9c4d55c` is public on
+        `armv4-boards`. On 2026-07-22 the seven original commits were rebased
+        onto the public, patch-equivalent 11-commit base and pushed as a
+        fast-forward. The controller-identity follow-up was then built and
+        verified from its exact public commit before replacing the shipped
+        Wasm binary.
 - [x] Layout:
   ```
   frontend/          # index.html, css/svg art, xterm glue, coi-serviceworker
@@ -354,13 +354,14 @@ independent guest surfaces.
 - [x] **Floppy** — the front-panel slot is a real button: click it before
       power-on to insert any raw geometry listed in QEMU's `fd_formats` table.
       The Wasm launch writes the image to MEMFS and attaches it read/write as
-      floppy unit 0; `DOWNLOAD FLOPPY` exports the current copy. QEMU commit
-      `058c052d50d5` models the 82C711-compatible word-spaced FDC registers,
-      normal completion IRQ and the two-address ARM FIQ pseudo-DMA transfer
-      window. `-M riscpc,floppy=off` preserves the no-controller regression.
-      The browser test boots stable Linux, detects `FDC 0 is a S82078B`, writes
-      `RPCFLOP` through `/dev/fd0`, downloads the 1.44 MiB image and verifies
-      the marker at byte 512. It also retains the full IDE/persistence suite.
+      floppy unit 0; `DOWNLOAD FLOPPY` exports the current copy. QEMU commits
+      `f3d9daffc056` and `0f0e03dca12f` model the RiscPC's word-spaced SMC
+      FDC37C665 registers, its 82077AA-compatible command identity, normal
+      completion IRQ and the two-address ARM FIQ pseudo-DMA transfer window.
+      `-M riscpc,floppy=off` preserves the no-controller regression. The browser
+      test boots stable Linux, detects `FDC 0 is a post-1991 82077`, writes
+      `RPCFLOP` through `/dev/fd0`, downloads the 1.44 MiB image and verifies the
+      marker at byte 512. It also retains the full IDE/persistence suite.
       QEMU's shared 82078 core needed a real fix discovered here: DRIVE
       SPECIFICATION has a variable-length parameter phase and its NRP bit was
       interpreted backwards. A new qtest covers short commands both with and

@@ -367,12 +367,15 @@ independent guest surfaces.
 
 ## Phase 4 — Ecosystem / stretch (ongoing)
 
-- [ ] Investigate the legacy ARM FIQ descriptor warning exposed by the first
+- [x] Investigate the legacy ARM FIQ descriptor warning exposed by the first
       floppy data transfer. `enable_fiq()` reaches generic `enable_irq()` on a
       descriptor that mach-rpc installed but never activated, triggering
       `irq_startup()`'s `!irqd_is_activated()` warning. Transfers still complete
-      and round-trip correctly. This is recorded as a kernel-side candidate;
-      the shipped kernels deliberately remain unchanged.
+      and round-trip correctly. [`docs/fiq-descriptor-warning.md`](docs/fiq-descriptor-warning.md)
+      traces the regression to genirq commit `c942cee46bba` in v4.15, proves
+      RiscPC floppy DMA is the only current in-tree `enable_fiq()` user, and
+      records the ARM/genirq repair constraints and validation matrix. The
+      shipped kernels deliberately remain unchanged.
 - [ ] Send the four pending patches (`~/linux-work/patches/`, needs Karl's
       `git send-email`) — cover letters can now cite the live demo URL as evidence
       that mach-rpc has users.

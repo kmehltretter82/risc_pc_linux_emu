@@ -380,8 +380,11 @@ independent guest surfaces.
       records the ARM/genirq repair constraints and validation matrix. The
       shipped kernels deliberately remain unchanged.
 - [ ] Send the four pending patches (`~/linux-work/patches/`, needs Karl's
-      `git send-email`) — cover letters can now cite the live demo URL as evidence
-      that mach-rpc has users.
+      authenticated `git send-email`). Preparation completed 2026-07-22: the
+      unrelated fixes are four standalone `[PATCH]` messages with embedded
+      `get_maintainer.pl` routing; all apply to current upstream trees, pass
+      strict checkpatch, and pass separate `git-send-email --dry-run` parsing.
+      Only actual delivery remains.
 - [x] **About page**: `frontend/about.html` tells the data-sheet-first bug-hunt
       story, links the three public Linux fixes and the public QEMU IDE fix,
       records the NetBSD and FIQ findings, and diagrams the browser → Emscripten

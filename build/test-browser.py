@@ -6,6 +6,7 @@
 #
 # Usage: build/testvenv/bin/python build/test-browser.py [url] [timeout_s]
 
+import re
 import sys
 from playwright.sync_api import sync_playwright
 
@@ -113,21 +114,25 @@ def main():
                 + px(style.paddingTop) + px(style.paddingBottom);
             const canvases = [...document.querySelectorAll('#terminal canvas')]
                 .map(canvas => canvas.getBoundingClientRect());
+            // xterm.js can select either a canvas or DOM renderer. The screen
+            // box is the correct fallback for the latter.
+            const rendered = canvases.length ? canvases : [screen];
             return {
                 bezelLeft: bezel.left,
                 bezelRight: bezel.right,
                 viewportWidth: innerWidth,
                 widthError: Math.abs(host.width - Math.ceil(expectedWidth)),
                 heightError: Math.abs(host.height - Math.ceil(expectedHeight)),
-                canvasLeft: Math.min(...canvases.map(rect => rect.left)),
-                canvasRight: Math.max(...canvases.map(rect => rect.right)),
+                renderer: canvases.length ? 'canvas' : 'dom',
+                contentLeft: Math.min(...rendered.map(rect => rect.left)),
+                contentRight: Math.max(...rendered.map(rect => rect.right)),
             };
         }""")
         layout_ok = (
             layout["bezelLeft"] >= -0.5
             and layout["bezelRight"] <= layout["viewportWidth"] + 0.5
-            and layout["canvasLeft"] >= layout["bezelLeft"] - 0.5
-            and layout["canvasRight"] <= layout["bezelRight"] + 0.5
+            and layout["contentLeft"] >= layout["bezelLeft"] - 0.5
+            and layout["contentRight"] <= layout["bezelRight"] + 0.5
             and layout["widthError"] <= 0.5
             and layout["heightError"] <= 0.5
         )
@@ -165,6 +170,49 @@ def main():
 
         booted = WANT in text and KERNEL_BANNER in text
 
+        # The RISC PC monitor is a separate VIDC20 framebuffer. A visible
+        # canvas is not enough: sample the pixels to prove QEMU actually drew
+        # the guest's fbcon rather than merely revealing an empty element.
+        display_ok = False
+        display = {}
+        if booted:
+            try:
+                page.wait_for_function("""() => {
+                    const canvas = document.querySelector('#screen');
+                    if (!canvas.classList.contains('live')) return false;
+                    const pixels = canvas.getContext('2d').getImageData(
+                        0, 0, canvas.width, canvas.height).data;
+                    let lit = 0;
+                    for (let i = 0; i < pixels.length; i += 16) {
+                        if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 30) lit++;
+                    }
+                    return lit > 100;
+                }""", timeout=30000)
+                display = page.evaluate("""() => {
+                    const canvas = document.querySelector('#screen');
+                    const pixels = canvas.getContext('2d').getImageData(
+                        0, 0, canvas.width, canvas.height).data;
+                    let lit = 0;
+                    for (let i = 0; i < pixels.length; i += 16) {
+                        if (pixels[i] + pixels[i + 1] + pixels[i + 2] > 30) lit++;
+                    }
+                    return {
+                        live: canvas.classList.contains('live'),
+                        width: canvas.width,
+                        height: canvas.height,
+                        litSamples: lit,
+                    };
+                }""")
+                display_ok = (
+                    display["live"]
+                    and display["width"] == 640
+                    and display["height"] == 480
+                    and display["litSamples"] > 100
+                )
+            except Exception as exc:
+                console.append(f"[display] {exc}")
+            print(f"VIDC20 canvas: {'live' if display_ok else 'FAILED'} {display}")
+
         # A shell prompt is written without a trailing newline. It must become
         # visible before we type anything; otherwise Emscripten stdout has
         # regressed to its default line-buffered TTY behavior.
@@ -195,6 +243,64 @@ def main():
                     break
             print(f"keyboard input: {'works' if typed_ok else 'NO RESPONSE'}")
 
+        # Focus now selects the other input path. Read the real rpckbd receive
+        # interrupt count over serial, press a key with the VIDC20 canvas in
+        # focus, and require that Linux observes a new interrupt. The bridge's
+        # per-kind counters independently cover mouse button and motion events.
+        machine_input_ok = False
+        machine_input = {}
+        if typed_ok and display_ok:
+            irq_pattern = re.compile(r"^\s*15:\s+(\d+)\b.*\brpckbd\b", re.M)
+
+            page.click("#terminal")
+            before_lines = irq_pattern.findall(page.evaluate(read_buffer))
+            page.keyboard.type("grep '^ *15:' /proc/interrupts")
+            page.keyboard.press("Enter")
+            before_irq = None
+            for _ in range(20):
+                page.wait_for_timeout(500)
+                before_lines_now = irq_pattern.findall(page.evaluate(read_buffer))
+                if len(before_lines_now) > len(before_lines):
+                    before_irq = int(before_lines_now[-1])
+                    break
+
+            canvas = page.locator("#screen")
+            canvas.click(position={"x": 120, "y": 90})
+            box = canvas.bounding_box()
+            if box:
+                page.mouse.move(box["x"] + 128, box["y"] + 96)
+            page.keyboard.press("a")
+            page.wait_for_function("""() => {
+                const stats = self.__rpcInputStats;
+                const kinds = stats && stats.poppedByType;
+                return kinds && kinds[1] && kinds[2] && kinds[3]
+                    && kinds[4] && kinds[5] && kinds[6];
+            }""", timeout=10000)
+
+            page.click("#terminal")
+            after_lines = irq_pattern.findall(page.evaluate(read_buffer))
+            page.keyboard.type("grep '^ *15:' /proc/interrupts")
+            page.keyboard.press("Enter")
+            after_irq = None
+            for _ in range(20):
+                page.wait_for_timeout(500)
+                after_lines_now = irq_pattern.findall(page.evaluate(read_buffer))
+                if len(after_lines_now) > len(after_lines):
+                    after_irq = int(after_lines_now[-1])
+                    break
+
+            machine_input = page.evaluate("self.__rpcInputStats")
+            machine_input.update({"irqBefore": before_irq, "irqAfter": after_irq})
+            kinds = machine_input.get("poppedByType", {})
+            machine_input_ok = (
+                before_irq is not None
+                and after_irq is not None
+                and after_irq > before_irq
+                and all(int(kinds.get(str(kind), 0)) > 0 for kind in range(1, 7))
+            )
+            print(f"monitor PS/2 + mouse input: "
+                  f"{'works' if machine_input_ok else 'FAILED'} {machine_input}")
+
         # Enter a second command using only the rendered LK201 buttons. This
         # checks the pointer/touch path separately from xterm's physical input.
         virtual_keys_ok = False
@@ -217,7 +323,7 @@ def main():
         # Once running, POWER is a hard switch: it must reload the page (which
         # terminates the Wasm pthread) and return to a clean powered-off scene.
         hard_off_ok = False
-        if virtual_keys_ok:
+        if virtual_keys_ok and machine_input_ok:
             try:
                 page.wait_for_function("!document.querySelector('#power').disabled")
                 with page.expect_navigation(wait_until="load", timeout=10000):
@@ -238,7 +344,8 @@ def main():
             print(f"hard power off: {'works' if hard_off_ok else 'FAILED'}")
 
         ok = (hardware_ok and selector_ok and layout_ok and booted
-              and prompt_visible and typed_ok and virtual_keys_ok and hard_off_ok)
+              and display_ok and prompt_visible and typed_ok
+              and machine_input_ok and virtual_keys_ok and hard_off_ok)
 
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
@@ -248,7 +355,8 @@ def main():
         print(f"\nRESULT: {'PASS' if ok else 'FAIL'} "
               f"(hardware={hardware_ok}, selector={selector_ok}, "
               f"layout={layout_ok}, boot={booted}, prompt={prompt_visible}, "
-              f"physical_input={typed_ok}, virtual_input={virtual_keys_ok}, "
+              f"display={display_ok}, physical_input={typed_ok}, "
+              f"machine_input={machine_input_ok}, virtual_input={virtual_keys_ok}, "
               f"hard_off={hard_off_ok})")
         browser.close()
         return 0 if ok else 1

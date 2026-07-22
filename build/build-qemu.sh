@@ -34,15 +34,13 @@ fi
 # Take QEMU's list verbatim and append only what we need on top, so this
 # survives upstream changing its own flags.
 #
-# emscripten-pty.js (from xterm-pty) is a *link-time* JS library, not a runtime
-# script: it overrides emscripten's TTY ops so QEMU's "-serial stdio" reads and
-# writes a real pty backed by the xterm.js terminal in the page, with working
-# termios and blocking reads. Without it the guest's console output goes to
-# console.log instead of the terminal.
-#
 # stdin-proxy.js gives the console a keyboard: QEMU's fd 0 lives on the worker
 # that -sPROXY_TO_PTHREAD puts main() on, while keystrokes arrive on the
 # browser main thread, so the read and poll paths are proxied across.
+#
+# display-canvas.js is the same trick for the other direction: the VIDC20
+# surface is pushed out to a canvas on the browser main thread, because
+# the emscripten build has no display backend and runs -display none.
 #
 # XTERM_PTY=1 instead links xterm-pty, which would add full termios handling,
 # but it is incompatible with -sPROXY_TO_PTHREAD (its PTY object is
@@ -54,7 +52,7 @@ text = open(sys.argv[1]).read()
 m = re.search(r"^c_link_args = (\[.*?\])$", text, re.M)
 print(" ".join(ast.literal_eval(m.group(1))))
 PY
-) --js-library $HERE/stdin-proxy.js"
+) --js-library $HERE/stdin-proxy.js --js-library $HERE/display-canvas.js"
 if [ "${XTERM_PTY:-0}" = 1 ]; then
     LINK_ARGS="${LINK_ARGS//-sPROXY_TO_PTHREAD=1/} --js-library $HERE/emscripten-pty.js"
 fi
@@ -62,5 +60,11 @@ fi
 "$OUT/pyvenv/bin/meson" configure "$OUT" -Dc_link_args="$LINK_ARGS"
 
 emmake make -j"$JOBS"
+
+# emcc indents bodies imported from --js-library, including otherwise blank
+# lines. Keep the committed generated loader free of trailing whitespace while
+# preserving byte-for-byte reproducibility through this build script.
+sed -i 's/[[:blank:]]*$//' qemu-system-arm.js
+
 echo "=== artifacts:"
 ls -lh qemu-system-arm* 2>/dev/null || true

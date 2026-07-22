@@ -7,48 +7,34 @@
 // which is deliberately the same path the browser takes with its fetched
 // copies - this harness exercises the wiring the page will use, not a
 // node-only shortcut (NODEFS would need -lnodefs.js and test less).
-// emscripten-pty.js is linked into the module and always reads Module.pty,
-// so we hand it a pty here too, driven by this process's stdio instead of
-// an xterm.js instance.
 
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
-import { createRequire } from "node:module";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const require = createRequire(import.meta.url);
-const { openpty } = require(path.join(here, "..", "frontend", "vendor", "xterm-pty.js"));
 
 const assetsDir = path.resolve(process.argv[2] || path.join(here, "..", "assets"));
 const kernelFile = process.argv[3] || "zImage";
 const qemuJs = path.join(here, "out", "qemu-system-arm.js");
 
-const { master, slave } = openpty();
-
-// Minimal stand-in for the xterm.js side of the pty.
-const noop = { dispose() {} };
-master.activate({
-  write: (data, ack) => { process.stdout.write(Buffer.from(data)); if (ack) ack(); },
-  onData: (handler) => {
-    if (process.stdin.isTTY) process.stdin.setRawMode(true);
-    process.stdin.on("data", (d) => handler(d.toString("binary")));
-    return noop;
-  },
-  onBinary: () => noop,
-  onResize: () => noop,
-});
+// stdin-proxy.js pulls bytes from the same main-thread queue used by the
+// browser page. Module.stdout bypasses Emscripten's line-buffered default so
+// prompts without a newline are visible here too.
+globalThis.__rpcStdin = [];
+if (process.stdin.isTTY) process.stdin.setRawMode(true);
+process.stdin.on("data", (data) => globalThis.__rpcStdin.push(...data));
 
 const moduleArg = {
   arguments: [
     "-M", "riscpc",
     "-kernel", "/assets/zImage",
     "-initrd", "/assets/initramfs-busybox.cpio.gz",
-    "-append", "console=ttyS0 rdinit=/init",
+    "-append", "console=tty0 console=ttyS0 rdinit=/init",
     "-serial", "stdio",
     "-display", "none",
   ],
-  pty: slave,
+  stdout: (byte) => process.stdout.write(Buffer.from([byte])),
   preRun: [
     () => {
       moduleArg.FS.mkdir("/assets");

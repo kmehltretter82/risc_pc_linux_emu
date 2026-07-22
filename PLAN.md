@@ -52,11 +52,12 @@ GitHub Pages (static files only)
 
 Boot flow in the tab: click power button → fetch assets with progress indicator →
 drop them into Emscripten's in-memory FS → start QEMU with
-`-M riscpc -kernel zImage -initrd rootfs.cpio.gz -append 'console=ttyS0 rdinit=/init'`
-→ UART chardev bridged to xterm.js.
+`-M riscpc -kernel zImage -initrd rootfs.cpio.gz -append 'console=tty0 console=ttyS0 rdinit=/init'`
+→ VIDC20 bridged to the monitor canvas and the UART chardev bridged to xterm.js.
 
-Input routing model (grows with phases): focus the terminal → bytes to the UART;
-(Phase 2+) focus the monitor → scancodes to the machine's own PS/2 keyboard.
+Input routing model: focus the terminal → bytes to the UART; focus the monitor →
+scancodes and relative mouse events to the machine's own KART/PS/2 keyboard and
+quadrature mouse.
 
 ---
 
@@ -175,17 +176,19 @@ BtNetBSD gets this for free by running under RISC OS, whose MMU is already
 enabled. `initarm()` builds the kernel's *final* tables — by then it is
 already running mapped. QEMU must therefore supply the initial mapping:
 
-- [ ] Build an L1 section table in guest RAM: kernel VA `0xf0000000` → load
+- [x] Build an L1 section table in guest RAM: kernel VA `0xf0000000` → load
       PA, plus **identity-mapped I/O** (`initarm` dereferences
       `VIDC_HW_BASE 0x03400000` and `IOMD_HW_BASE` raw — `vidc_machdep.h:54`).
-- [ ] Entry stub: set TTBR0 + DACR, enable MMU, `r0` = bootconfig VA, jump to
+- [x] Entry stub: set TTBR0 + DACR, enable MMU, `r0` = bootconfig VA, jump to
       0xf0000000. Precedent: the blobs in `hw/arm/boot.c`.
-- [ ] Synthesize `struct bootconfig` (magic `0x43112233`, v2): `dram[]`,
+- [x] Synthesize `struct bootconfig` (magic `0x43112233`, v2): `dram[]`,
       `pagesize`, `kernelname`, `args`. The `display_*` fields wait for 2b.
-- [ ] Load `netbsd-GENERIC` (ELF32, one LOAD segment, vaddr==paddr==
+- [x] Load `netbsd-GENERIC` (ELF32, one LOAD segment, vaddr==paddr==
       0xf0000000 — so the ELF paddr is a *virtual* address; do not honour it
       literally when placing the image).
-- [ ] Definition of done: NetBSD reaches its serial console.
+- [x] Definition of done: NetBSD boots and reaches console output. The tested
+      GENERIC kernel selects `vidcvideo`, so its console is the framebuffer
+      rather than serial.
 
 Estimate: days, not hours. This is the riskiest item in Phase 2 — it is the
 one piece with no working reference in-tree.
@@ -268,18 +271,19 @@ independent guest surfaces.
 
 ### 2b. VIDC20 framebuffer
 
-- [ ] New `hw/display/vidc20.c`: single write port at `0x03400000`, register
+- [x] New `hw/display/vidc20.c`: single write port at `0x03400000`, register
       selected by bits 31..24. Palette (28-bit: R 0-7, G 8-15, B 16-23,
       Ext 24-27), HDSR/HDER/VDSR/VDER geometry, CONREG bpp at bits 5-7.
       Draw via `framebuffer.c` from **main DRAM** — with `-kernel` boot
       `vram_size` is 0, so `acornfb` allocates via `dma_alloc_wc` and no VRAM
       model is needed.
-- [ ] IOMD video DMA: `VIDSTART` 0x1D8, `VIDEND` 0x1D4, `VIDINIT` 0x1DC,
+- [x] IOMD video DMA: `VIDSTART` 0x1D8, `VIDEND` 0x1D4, `VIDINIT` 0x1DC,
       `VIDCR` 0x1E0. Values already land in `regs[]`; add an accessor.
       Open question for the datasheet: `acornfb.c:568-579` writes an *address*
       into `VIDEND` despite naming it `size`, and `VIDCR` gets
       `DMA_CR_E|DMA_CR_D|16` whose D bit and count are undocumented in the
-      driver. Resolve from §4, not by fitting.
+      driver. The model exposes `VIDINIT` as the live/panning address,
+      `VIDSTART` as the buffer base, and gates scanout on `VIDCR` bit 5.
 - [x] Cross-validated against two independent drivers, which is the point
       of the exercise: Linux `acornfb` at 640x480x4bpp, and NetBSD `wscons`
       at **640x350** — a different mode, so HDSR/HDER/VDSR/VDER are
@@ -295,10 +299,13 @@ independent guest surfaces.
 - [x] **KART keyboard** (PS/2, via QEMU's ps2 core) → mainline `rpckbd`
       with `atkbd` above it. KCTRL bit 7 TXEMPTY / bit 5 RXFULL, receive on
       bank B bit 7. Linux now registers `AT Raw Set 2 keyboard`.
-- [ ] Frontend (**still open**): monitor becomes a live canvas; input
+- [x] Frontend: monitor becomes a live canvas; input
       routing by focus (terminal→UART, monitor→PS/2), both consoles live at
-      once. Needs the wasm rebuild plus canvas work in `frontend/`; the
-      device side is done and testable natively.
+      once. The wasm worker pushes xRGB frames to the main-thread canvas and
+      drains keyboard/button/relative-motion events through QEMU's normal
+      input API. `build/test-browser.py` verifies 640x480 non-black output,
+      every browser input event kind, and an actual Linux `rpckbd` IRQ count
+      increase (8→9 in the 2026-07-22 validation run).
 
 ### 2d. Regression
 

@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0
-// Phase 1: serial-console MVP. The terminal is the real UART; the monitor
-// stays dark until the VIDC20 model exists (Phase 2).
+// Browser front panel for the emulated RISC PC. The canvas is the VIDC20
+// framebuffer and the VT220 is the separate, real UART console.
 
 "use strict";
 
@@ -29,10 +29,196 @@ const QEMU_ARGS = [
   "-M", "riscpc",
   "-kernel", "/assets/zImage",
   "-initrd", "/assets/initramfs-busybox.cpio.gz",
-  "-append", "console=ttyS0 rdinit=/init",
+  // Both consoles live at once: tty0 puts the kernel log on the VIDC20
+  // framebuffer, ttyS0 comes last so it stays /dev/console and the VT220
+  // beside the machine remains the interactive one.
+  "-append", "console=tty0 console=ttyS0 rdinit=/init",
   "-serial", "stdio",
   "-display", "none",
 ];
+
+// The monitor. qemu/ui/wasm-canvas.c pushes each VIDC20 frame out to this
+// canvas from QEMU's worker; build/display-canvas.js does the blit on this
+// thread. The canvas resizes itself to whatever mode the guest programs -
+// acornfb picks 640x480, NetBSD picks 640x350 - so the glass follows the
+// guest rather than the other way round.
+const monitorCanvas = document.getElementById("screen");
+const nosignal = document.getElementById("nosignal");
+self.__rpcCanvas = monitorCanvas;
+self.__rpcOnResize = (w, h) => {
+  nosignal.hidden = true;
+  monitorCanvas.classList.add("live");
+  document.getElementById("machine-caption").textContent =
+    `VIDC20 output, ${w}x${h}. This is the machine's own framebuffer; ` +
+    "click it for the RISC PC keyboard and mouse. The terminal beside it " +
+    "is the serial console.";
+};
+
+// Browser input crosses from this main thread to QEMU's worker through
+// build/display-canvas.js. Each uint32 has an event kind in its high byte and
+// a Linux input keycode, mouse button, or signed relative delta in its low
+// 16 bits. QEMU then feeds its normal PS/2 and quadrature-mouse handlers.
+const RPC_INPUT = Object.freeze({
+  KEY_DOWN: 1,
+  KEY_UP: 2,
+  REL_X: 3,
+  REL_Y: 4,
+  BUTTON_DOWN: 5,
+  BUTTON_UP: 6,
+});
+const RPC_INPUT_SHIFT = 24;
+const RPC_INPUT_QUEUE_LIMIT = 4096;
+
+self.__rpcMachineInput = null;
+self.__rpcInputStats = null;
+
+function signedInputValue(packed) {
+  const value = packed & 0xffff;
+  return value & 0x8000 ? value - 0x10000 : value;
+}
+
+function queueMachineInput(kind, rawValue) {
+  const queue = self.__rpcMachineInput;
+  if (!queue) return false;
+
+  const value = Math.max(-32768, Math.min(32767, Math.round(rawValue)));
+  const pending = queue.events.length - queue.head;
+
+  // Mousemove can arrive much faster than the 30 Hz worker-side drain. Merge
+  // adjacent deltas to keep latency bounded without losing total movement.
+  if ((kind === RPC_INPUT.REL_X || kind === RPC_INPUT.REL_Y) && pending) {
+    const lastIndex = queue.events.length - 1;
+    const last = queue.events[lastIndex] >>> 0;
+    if ((last >>> RPC_INPUT_SHIFT) === kind) {
+      const combined = Math.max(-32768, Math.min(
+        32767, signedInputValue(last) + value,
+      ));
+      queue.events[lastIndex] =
+        ((kind << RPC_INPUT_SHIFT) | (combined & 0xffff)) >>> 0;
+      return true;
+    }
+  }
+
+  // A pathological stream of pointer movement must not grow memory forever.
+  // Preserve discrete key/button transitions once the cap is reached.
+  if (pending >= RPC_INPUT_QUEUE_LIMIT) {
+    if (kind === RPC_INPUT.REL_X || kind === RPC_INPUT.REL_Y) return false;
+    queue.events.splice(queue.head, 1);
+  }
+  queue.events.push(
+    ((kind << RPC_INPUT_SHIFT) | (value & 0xffff)) >>> 0,
+  );
+  if (self.__rpcInputStats) self.__rpcInputStats.queued++;
+  return true;
+}
+
+// KeyboardEvent.code describes the physical key, which is exactly what the
+// Linux evdev keycodes accepted by QEMU describe. This layout-independent map
+// covers the RISC PC keyboard plus the common extended PC keys.
+const LINUX_KEY_CODES = Object.freeze({
+  Escape: 1,
+  Digit1: 2, Digit2: 3, Digit3: 4, Digit4: 5, Digit5: 6,
+  Digit6: 7, Digit7: 8, Digit8: 9, Digit9: 10, Digit0: 11,
+  Minus: 12, Equal: 13, Backspace: 14, Tab: 15,
+  KeyQ: 16, KeyW: 17, KeyE: 18, KeyR: 19, KeyT: 20,
+  KeyY: 21, KeyU: 22, KeyI: 23, KeyO: 24, KeyP: 25,
+  BracketLeft: 26, BracketRight: 27, Enter: 28, ControlLeft: 29,
+  KeyA: 30, KeyS: 31, KeyD: 32, KeyF: 33, KeyG: 34,
+  KeyH: 35, KeyJ: 36, KeyK: 37, KeyL: 38, Semicolon: 39,
+  Quote: 40, Backquote: 41, ShiftLeft: 42, Backslash: 43,
+  KeyZ: 44, KeyX: 45, KeyC: 46, KeyV: 47, KeyB: 48,
+  KeyN: 49, KeyM: 50, Comma: 51, Period: 52, Slash: 53,
+  ShiftRight: 54, NumpadMultiply: 55, AltLeft: 56, Space: 57,
+  CapsLock: 58,
+  F1: 59, F2: 60, F3: 61, F4: 62, F5: 63,
+  F6: 64, F7: 65, F8: 66, F9: 67, F10: 68,
+  NumLock: 69, ScrollLock: 70,
+  Numpad7: 71, Numpad8: 72, Numpad9: 73, NumpadSubtract: 74,
+  Numpad4: 75, Numpad5: 76, Numpad6: 77, NumpadAdd: 78,
+  Numpad1: 79, Numpad2: 80, Numpad3: 81, Numpad0: 82,
+  NumpadDecimal: 83, IntlBackslash: 86, F11: 87, F12: 88,
+  IntlRo: 89, NumpadEnter: 96, ControlRight: 97,
+  NumpadDivide: 98, PrintScreen: 99, AltRight: 100,
+  Home: 102, ArrowUp: 103, PageUp: 104, ArrowLeft: 105,
+  ArrowRight: 106, End: 107, ArrowDown: 108, PageDown: 109,
+  Insert: 110, Delete: 111, NumpadEqual: 117, Pause: 119,
+  NumpadComma: 121,
+  IntlYen: 124, MetaLeft: 125, MetaRight: 126, ContextMenu: 127,
+  F13: 183, F14: 184, F15: 185, F16: 186,
+  F17: 187, F18: 188, F19: 189, F20: 190,
+});
+
+const monitorHeldKeys = new Map();
+const monitorHeldButtons = new Set();
+
+function monitorHasFocus() {
+  return document.activeElement === monitorCanvas;
+}
+
+function releaseMonitorInput() {
+  for (const linuxCode of monitorHeldKeys.values()) {
+    queueMachineInput(RPC_INPUT.KEY_UP, linuxCode);
+  }
+  monitorHeldKeys.clear();
+  for (const button of monitorHeldButtons) {
+    queueMachineInput(RPC_INPUT.BUTTON_UP, button);
+  }
+  monitorHeldButtons.clear();
+}
+
+addEventListener("keydown", (event) => {
+  if (!monitorHasFocus()) return;
+  const linuxCode = LINUX_KEY_CODES[event.code];
+  if (linuxCode === undefined) return;
+  event.preventDefault();
+  if (monitorHeldKeys.has(event.code)) return;
+  monitorHeldKeys.set(event.code, linuxCode);
+  queueMachineInput(RPC_INPUT.KEY_DOWN, linuxCode);
+}, true);
+
+addEventListener("keyup", (event) => {
+  const linuxCode = monitorHeldKeys.get(event.code);
+  if (linuxCode === undefined) return;
+  event.preventDefault();
+  monitorHeldKeys.delete(event.code);
+  queueMachineInput(RPC_INPUT.KEY_UP, linuxCode);
+}, true);
+
+monitorCanvas.addEventListener("blur", releaseMonitorInput);
+monitorCanvas.addEventListener("pointerdown", (event) => {
+  monitorCanvas.focus({ preventScroll: true });
+  if (event.button < 0 || event.button > 2) return;
+  event.preventDefault();
+  if (!monitorHeldButtons.has(event.button)) {
+    monitorHeldButtons.add(event.button);
+    queueMachineInput(RPC_INPUT.BUTTON_DOWN, event.button);
+  }
+  try {
+    monitorCanvas.setPointerCapture(event.pointerId);
+  } catch (err) {
+    // Safari can reject capture if the pointer ended during focus handling.
+  }
+});
+monitorCanvas.addEventListener("pointermove", (event) => {
+  if (!monitorHasFocus()) return;
+  if (event.movementX) queueMachineInput(RPC_INPUT.REL_X, event.movementX);
+  if (event.movementY) queueMachineInput(RPC_INPUT.REL_Y, event.movementY);
+});
+monitorCanvas.addEventListener("pointerup", (event) => {
+  if (!monitorHeldButtons.delete(event.button)) return;
+  event.preventDefault();
+  queueMachineInput(RPC_INPUT.BUTTON_UP, event.button);
+});
+monitorCanvas.addEventListener("pointercancel", releaseMonitorInput);
+monitorCanvas.addEventListener("lostpointercapture", () => {
+  for (const button of monitorHeldButtons) {
+    queueMachineInput(RPC_INPUT.BUTTON_UP, button);
+  }
+  monitorHeldButtons.clear();
+});
+monitorCanvas.addEventListener("contextmenu", (event) => {
+  if (monitorHasFocus()) event.preventDefault();
+});
 
 const term = new Terminal({
   cols: 80, rows: 24,
@@ -544,6 +730,14 @@ async function bootQemu(kernel, initrd) {
   term.reset();
   term.focus();
 
+  releaseMonitorInput();
+  self.__rpcMachineInput = { events: [], head: 0 };
+  self.__rpcInputStats = { queued: 0, popped: 0, poppedByType: {} };
+  monitorCanvas.__rpcReady = false;
+  monitorCanvas.__rpcImage = null;
+  monitorCanvas.classList.remove("live");
+  nosignal.hidden = false;
+
   // Keystrokes land here on the main thread; build/stdin-proxy.js drains the
   // queue from the worker running QEMU's main loop.
   self.__rpcStdin = [];
@@ -612,11 +806,17 @@ async function bootQemu(kernel, initrd) {
     ],
     onAbort: (what) => {
       self.__rpcStdin = null;
+      self.__rpcMachineInput = null;
+      monitorHeldKeys.clear();
+      monitorHeldButtons.clear();
       finishSerial();
       term.writeln(`\r\n\x1b[31m[abort] ${what}\x1b[0m`);
     },
     onExit: () => {
       self.__rpcStdin = null;
+      self.__rpcMachineInput = null;
+      monitorHeldKeys.clear();
+      monitorHeldButtons.clear();
       if (terminalInputSubscription) terminalInputSubscription.dispose();
       terminalInputSubscription = null;
       finishSerial();

@@ -22,7 +22,11 @@
   </svg>
   <section class="machine">
     <div class="monitor">
-      <div class="crt" id="crt"><span class="nosignal">NO SIGNAL</span></div>
+      <div class="crt" id="crt">
+        <span class="nosignal" id="nosignal">NO SIGNAL</span>
+        <canvas id="screen" width="640" height="480" tabindex="0"
+                aria-label="RISC PC monitor, VIDC20 output; focus for machine keyboard and mouse input"></canvas>
+      </div>
       <div class="monitor-foot"></div>
     </div>
     <div class="case">
@@ -57,8 +61,9 @@
         QEMU direct-loads the selected image; the removable modules are the selector.
       </p>
     </fieldset>
-    <p class="caption" id="machine-caption">VIDC20 not modelled yet — the monitor
-    stays dark. The serial port is alive: watch the terminal.</p>
+    <p class="caption" id="machine-caption">VIDC20 drives the monitor: this is
+    the machine's own framebuffer, not the serial console. Both are live at
+    once, as on a real bring-up bench.</p>
   </section>
 
   <section class="vt">

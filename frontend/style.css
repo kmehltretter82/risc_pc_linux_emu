@@ -236,3 +236,19 @@ footer { padding: 0.7rem 1.2rem; font-size: 0.72rem; color: var(--dim); }
 @media (prefers-reduced-motion: reduce) {
   .vt-key { transition: none; }
 }
+
+/* Monitor glass: the canvas only appears once the guest programs VIDC20. */
+.crt #screen {
+  display: none;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  image-rendering: pixelated;
+  background: #000;
+  cursor: default;
+  outline: none;
+}
+.crt #screen.live { display: block; }
+.crt #screen.live:focus {
+  box-shadow: inset 0 0 0 2px rgba(122, 186, 255, .8);
+}

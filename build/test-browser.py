@@ -181,6 +181,21 @@ def main():
             return out.join('\\n');
         }"""
 
+        def download_disk():
+            with page.expect_download(timeout=10000) as download_info:
+                page.click("#ide-download")
+            download = download_info.value
+            with open(download.path(), "rb") as exported:
+                exported.seek(4096)
+                marker = exported.read(7)
+                exported.seek(0, 2)
+                exported_size = exported.tell()
+            return {
+                "name": download.suggested_filename,
+                "size": exported_size,
+                "marker": marker,
+            }
+
         deadline = TIMEOUT * 1000
         step = 2000
         waited = 0
@@ -372,31 +387,49 @@ def main():
             )
             download_enabled = page.locator("#ide-download").is_enabled()
             if marker_written and download_enabled:
-                with page.expect_download(timeout=10000) as download_info:
-                    page.click("#ide-download")
-                download = download_info.value
-                with open(download.path(), "rb") as exported:
-                    exported.seek(4096)
-                    marker = exported.read(7)
-                    exported.seek(0, 2)
-                    exported_size = exported.tell()
+                exported = download_disk()
                 ide_round_trip = {
-                    "name": download.suggested_filename,
-                    "size": exported_size,
-                    "marker": marker.decode("ascii", errors="replace"),
+                    **exported,
+                    "marker": exported["marker"].decode("ascii", errors="replace"),
                 }
                 ide_round_trip_ok = (
-                    download.suggested_filename == "modified-browser-test.img"
-                    and exported_size == len(disk_bytes)
-                    and marker == b"RPCDISK"
+                    exported["name"] == "modified-browser-test.img"
+                    and exported["size"] == len(disk_bytes)
+                    and exported["marker"] == b"RPCDISK"
                 )
             print(f"IDE upload/write/download: "
                   f"{'works' if ide_round_trip_ok else 'FAILED'} {ide_round_trip}")
 
+        persistence_save_ok = False
+        persistence_save = {}
+        if ide_round_trip_ok:
+            page.click("#ide-save")
+            page.wait_for_function(
+                "document.querySelector('#ide-status').textContent.includes('is saved')",
+                timeout=30000,
+            )
+            persistence_save = page.evaluate("""() => ({
+                savedChoiceVisible: !document.querySelector('#ide-saved-choice').hidden,
+                saveEnabled: !document.querySelector('#ide-save').disabled,
+                resetEnabled: !document.querySelector('#ide-reset').disabled,
+                metadata: localStorage.getItem('riscpc-persistent-ide'),
+                status: document.querySelector('#ide-status').textContent,
+            })""")
+            persistence_save_ok = (
+                persistence_save["savedChoiceVisible"]
+                and persistence_save["saveEnabled"]
+                and persistence_save["resetEnabled"]
+                and "browser-test.img" in (persistence_save["metadata"] or "")
+            )
+            print(f"IDBFS save: "
+                  f"{'works' if persistence_save_ok else 'FAILED'} "
+                  f"{persistence_save}")
+
         # Once running, POWER is a hard switch: it must reload the page (which
         # terminates the Wasm pthread) and return to a clean powered-off scene.
         hard_off_ok = False
-        if virtual_keys_ok and machine_input_ok and ide_round_trip_ok:
+        if (virtual_keys_ok and machine_input_ok and ide_round_trip_ok
+                and persistence_save_ok):
             try:
                 page.wait_for_function("!document.querySelector('#power').disabled")
                 with page.expect_navigation(wait_until="load", timeout=10000):
@@ -415,16 +448,70 @@ def main():
                         "el => el.classList.contains('has-disk')"
                     )
                     and page.locator("#ide-download").is_disabled()
+                    and page.locator("#ide-saved-choice").is_visible()
+                    and not page.locator("#ide-use-saved").is_checked()
                 )
             except Exception as exc:
                 console.append(f"[hard-off] {exc}")
             print(f"hard power off: {'works' if hard_off_ok else 'FAILED'}")
 
+        # Persistence is opt-in on every load. Explicitly select the saved
+        # image, start a fresh Wasm instance, and prove the guest-written bytes
+        # came back from IndexedDB. Then reset the saved copy to the original
+        # upload and verify that state across one more hard power cycle.
+        persistence_restore_ok = False
+        factory_reset_ok = False
+        if hard_off_ok:
+            page.locator("#ide-use-saved").check()
+            page.click("#power")
+            page.wait_for_function(
+                "!document.querySelector('#ide-download').disabled",
+                timeout=120000,
+            )
+            restored = download_disk()
+            persistence_restore_ok = (
+                restored["size"] == len(disk_bytes)
+                and restored["marker"] == b"RPCDISK"
+            )
+            print("IDBFS restore: "
+                  f"{'works' if persistence_restore_ok else 'FAILED'} "
+                  f"size={restored['size']}, marker={restored['marker']!r}")
+
+            if persistence_restore_ok:
+                page.click("#ide-reset")
+                page.wait_for_function(
+                    "document.querySelector('#ide-status').textContent.includes('reset to factory')",
+                    timeout=30000,
+                )
+                page.wait_for_function("!document.querySelector('#power').disabled")
+                with page.expect_navigation(wait_until="load", timeout=10000):
+                    page.click("#power")
+
+                page.locator("#ide-use-saved").check()
+                page.click("#power")
+                page.wait_for_function(
+                    "!document.querySelector('#ide-download').disabled",
+                    timeout=120000,
+                )
+                factory = download_disk()
+                factory_reset_ok = (
+                    factory["size"] == len(disk_bytes)
+                    and factory["marker"] == bytes(7)
+                )
+                print("IDBFS factory reset: "
+                      f"{'works' if factory_reset_ok else 'FAILED'} "
+                      f"size={factory['size']}, marker={factory['marker']!r}")
+
+                page.wait_for_function("!document.querySelector('#power').disabled")
+                with page.expect_navigation(wait_until="load", timeout=10000):
+                    page.click("#power")
+
         ok = (hardware_ok and selector_ok and disk_selection_ok
               and layout_ok and booted
               and display_ok and prompt_visible and typed_ok
               and machine_input_ok and virtual_keys_ok
-              and ide_round_trip_ok and hard_off_ok)
+              and ide_round_trip_ok and persistence_save_ok and hard_off_ok
+              and persistence_restore_ok and factory_reset_ok)
 
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
@@ -438,7 +525,9 @@ def main():
               f"display={display_ok}, physical_input={typed_ok}, "
               f"machine_input={machine_input_ok}, virtual_input={virtual_keys_ok}, "
               f"ide_round_trip={ide_round_trip_ok}, "
-              f"hard_off={hard_off_ok})")
+              f"idbfs_save={persistence_save_ok}, hard_off={hard_off_ok}, "
+              f"idbfs_restore={persistence_restore_ok}, "
+              f"factory_reset={factory_reset_ok})")
         browser.close()
         return 0 if ok else 1
 

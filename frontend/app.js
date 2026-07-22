@@ -24,6 +24,10 @@ const KERNEL_STORAGE_KEY = "riscpc-boot-kernel";
 const QEMU_JS = "assets/qemu/qemu-system-arm.js";
 const IDE_PATH = "/assets/hda.img";
 const IDE_MAX_BYTES = 512 * 1024 * 1024;
+const IDE_PERSIST_ROOT = "/persist";
+const IDE_PERSIST_CURRENT = `${IDE_PERSIST_ROOT}/hda.img`;
+const IDE_PERSIST_FACTORY = `${IDE_PERSIST_ROOT}/factory.img`;
+const IDE_PERSIST_META_KEY = "riscpc-persistent-ide";
 
 // QEMU argv. -serial stdio is picked up by emscripten as the module's stdout,
 // which is proxied from the worker running main() back to this thread.
@@ -601,12 +605,52 @@ const ideDrive = document.getElementById("ide-drive");
 const ideDriveLabel = document.getElementById("ide-drive-label");
 const ideUpload = document.getElementById("ide-upload");
 const ideDownload = document.getElementById("ide-download");
+const ideSavedChoice = document.getElementById("ide-saved-choice");
+const ideUseSaved = document.getElementById("ide-use-saved");
+const ideSave = document.getElementById("ide-save");
+const ideReset = document.getElementById("ide-reset");
 const ideStatus = document.getElementById("ide-status");
 let powerState = "off";
 let selectedIdeImage = null;
 let activeIdeImage = null;
 let activeQemuModule = null;
 let ideLoading = false;
+let persistenceBusy = false;
+let persistenceReady = false;
+
+function loadSavedIdeMetadata() {
+  try {
+    const meta = JSON.parse(localStorage.getItem(IDE_PERSIST_META_KEY));
+    if (meta && typeof meta.name === "string" && Number.isSafeInteger(meta.size)
+        && meta.size > 0 && meta.size <= IDE_MAX_BYTES && meta.size % 512 === 0) {
+      return { name: meta.name, size: meta.size, source: "saved" };
+    }
+  } catch (err) {
+    console.warn("saved IDE metadata could not be restored", err);
+  }
+  return null;
+}
+
+let savedIdeImage = loadSavedIdeMetadata();
+
+function storeSavedIdeMetadata(image) {
+  savedIdeImage = { name: image.name, size: image.size, source: "saved" };
+  try {
+    localStorage.setItem(IDE_PERSIST_META_KEY, JSON.stringify(savedIdeImage));
+  } catch (err) {
+    console.warn("saved IDE metadata could not be recorded", err);
+  }
+}
+
+function clearSavedIdeMetadata() {
+  savedIdeImage = null;
+  ideUseSaved.checked = false;
+  try {
+    localStorage.removeItem(IDE_PERSIST_META_KEY);
+  } catch (err) {
+    console.warn("saved IDE metadata could not be cleared", err);
+  }
+}
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -620,17 +664,34 @@ function safeDownloadName(name) {
 }
 
 function updateIdeControls() {
-  const image = selectedIdeImage || activeIdeImage;
+  const useSaved = ideUseSaved.checked && savedIdeImage;
+  const image = useSaved || selectedIdeImage || activeIdeImage;
+  ideSavedChoice.hidden = !savedIdeImage;
   ideDrive.classList.toggle("has-disk", Boolean(image));
   ideDriveLabel.textContent = image
     ? `${image.name} · ${formatBytes(image.size)}`
     : "EMPTY · CLICK TO FIT";
   ideDownload.disabled = !(activeQemuModule && activeIdeImage);
+  ideSave.disabled = !(activeQemuModule && activeIdeImage) || persistenceBusy;
+  ideReset.disabled = !(activeQemuModule && savedIdeImage && persistenceReady)
+    || persistenceBusy;
 }
 
 function lockIdeSelection(locked) {
   ideDrive.disabled = locked || ideLoading;
   ideUpload.disabled = locked || ideLoading;
+  ideUseSaved.disabled = locked || ideLoading;
+}
+
+function selectedIdeForBoot() {
+  if (ideUseSaved.checked && savedIdeImage) return savedIdeImage;
+  return selectedIdeImage;
+}
+
+function syncPersistentFilesystem(module, populate) {
+  return new Promise((resolve, reject) => {
+    module.FS.syncfs(populate, (err) => err ? reject(err) : resolve());
+  });
 }
 
 ideDrive.addEventListener("click", () => ideUpload.click());
@@ -654,9 +715,12 @@ ideUpload.addEventListener("change", async () => {
       name: file.name,
       size: file.size,
       bytes: new Uint8Array(await file.arrayBuffer()),
+      source: "upload",
     };
+    ideUseSaved.checked = false;
     activeIdeImage = null;
     activeQemuModule = null;
+    persistenceReady = false;
     ideStatus.textContent =
       `${file.name} is ready. It will attach as the primary IDE disk at power-on.`;
   } catch (err) {
@@ -669,6 +733,19 @@ ideUpload.addEventListener("change", async () => {
     updateIdeControls();
     ideUpload.value = "";
   }
+});
+
+ideUseSaved.addEventListener("change", () => {
+  if (ideUseSaved.checked && savedIdeImage) {
+    ideStatus.textContent =
+      `${savedIdeImage.name} will be restored from browser storage at power-on.`;
+  } else if (selectedIdeImage) {
+    ideStatus.textContent =
+      `${selectedIdeImage.name} is ready. It will attach as the primary IDE disk.`;
+  } else {
+    ideStatus.textContent = "Select a raw disk image before pressing POWER.";
+  }
+  updateIdeControls();
 });
 
 ideDownload.addEventListener("click", () => {
@@ -690,7 +767,69 @@ ideDownload.addEventListener("click", () => {
     ideStatus.textContent = `Could not export the disk: ${err.message}`;
   }
 });
+
+ideSave.addEventListener("click", async () => {
+  if (!activeQemuModule || !activeIdeImage || persistenceBusy) return;
+  persistenceBusy = true;
+  updateIdeControls();
+  ideStatus.textContent = `Saving ${activeIdeImage.name} to browser storage…`;
+  try {
+    const FS = activeQemuModule.FS;
+    const current = FS.readFile(IDE_PATH);
+    FS.writeFile(IDE_PERSIST_CURRENT, current);
+
+    // A newly uploaded image defines "factory" for this saved disk. A disk
+    // restored from IDBFS keeps the factory copy already stored beside it.
+    if (activeIdeImage.source === "upload") {
+      if (!selectedIdeImage?.bytes) {
+        throw new Error("The original upload is no longer available.");
+      }
+      FS.writeFile(IDE_PERSIST_FACTORY, selectedIdeImage.bytes);
+    } else if (!FS.analyzePath(IDE_PERSIST_FACTORY).exists) {
+      throw new Error("The saved disk has no factory image.");
+    }
+
+    await syncPersistentFilesystem(activeQemuModule, false);
+    persistenceReady = true;
+    storeSavedIdeMetadata(activeIdeImage);
+    ideStatus.textContent =
+      `${activeIdeImage.name} is saved in this browser. BOOT SAVED COPY stays ` +
+      "opt-in after a reload.";
+  } catch (err) {
+    ideStatus.textContent = `Could not save the disk: ${err.message}`;
+  } finally {
+    persistenceBusy = false;
+    updateIdeControls();
+  }
+});
+
+ideReset.addEventListener("click", async () => {
+  if (!activeQemuModule || !savedIdeImage || persistenceBusy) return;
+  persistenceBusy = true;
+  updateIdeControls();
+  ideStatus.textContent = "Resetting the saved copy to its factory image…";
+  try {
+    const FS = activeQemuModule.FS;
+    const factory = FS.readFile(IDE_PERSIST_FACTORY);
+    FS.writeFile(IDE_PERSIST_CURRENT, factory);
+    await syncPersistentFilesystem(activeQemuModule, false);
+    ideStatus.textContent =
+      "Saved copy reset to factory. The currently running disk is unchanged; " +
+      "power off and choose BOOT SAVED COPY to use the reset image.";
+  } catch (err) {
+    ideStatus.textContent = `Could not reset the saved disk: ${err.message}`;
+  } finally {
+    persistenceBusy = false;
+    updateIdeControls();
+  }
+});
+
 updateIdeControls();
+if (savedIdeImage) {
+  ideStatus.textContent =
+    `${savedIdeImage.name} is stored in this browser. Tick BOOT SAVED COPY ` +
+    "to use it; the default remains ephemeral.";
+}
 
 function restoreKernelSelection() {
   let key = "current";
@@ -820,7 +959,7 @@ async function powerOn() {
   const kernel = await fetchWithProgress(choice.url, `kernel ${choice.version}`);
   const initrd = await fetchWithProgress(ASSETS.initrd, "initramfs");
   term.writeln("");
-  await bootQemu(kernel, initrd, selectedIdeImage);
+  await bootQemu(kernel, initrd, selectedIdeForBoot());
 }
 
 async function bootQemu(kernel, initrd, ideImage) {
@@ -834,6 +973,7 @@ async function bootQemu(kernel, initrd, ideImage) {
   monitorCanvas.__rpcImage = null;
   monitorCanvas.classList.remove("live");
   nosignal.hidden = false;
+  persistenceReady = false;
 
   // Keystrokes land here on the main thread; build/stdin-proxy.js drains the
   // queue from the worker running QEMU's main loop.
@@ -886,6 +1026,7 @@ async function bootQemu(kernel, initrd, ideImage) {
       "-drive", `file=${IDE_PATH},format=raw,if=ide,index=0`,
     );
   }
+  let persistenceLoadError = null;
 
   // The build is MODULARIZE'd and emits an ES module exporting a factory,
   // so this is a dynamic import rather than a <script> tag.
@@ -906,7 +1047,39 @@ async function bootQemu(kernel, initrd, ideImage) {
         moduleArg.FS.mkdir("/assets");
         moduleArg.FS.writeFile("/assets/zImage", kernel);
         moduleArg.FS.writeFile("/assets/initramfs-busybox.cpio.gz", initrd);
-        if (ideImage) moduleArg.FS.writeFile(IDE_PATH, ideImage.bytes);
+        moduleArg.FS.mkdir(IDE_PERSIST_ROOT);
+        moduleArg.FS.mount(
+          moduleArg.FS.filesystems.IDBFS, {}, IDE_PERSIST_ROOT,
+        );
+
+        if (ideImage?.source === "saved") {
+          const dependency = "riscpc-load-saved-ide";
+          moduleArg.addRunDependency(dependency);
+          moduleArg.FS.syncfs(true, (err) => {
+            try {
+              if (err) throw err;
+              const saved = moduleArg.FS.readFile(IDE_PERSIST_CURRENT);
+              if (saved.length !== ideImage.size) {
+                throw new Error("saved disk size does not match its metadata");
+              }
+              if (!moduleArg.FS.analyzePath(IDE_PERSIST_FACTORY).exists) {
+                throw new Error("saved disk has no factory image");
+              }
+              moduleArg.FS.writeFile(IDE_PATH, saved);
+              persistenceReady = true;
+            } catch (loadErr) {
+              persistenceLoadError = loadErr;
+              clearSavedIdeMetadata();
+              // Keep QEMU's command line valid and make recovery possible even
+              // if site storage was cleared independently of localStorage.
+              moduleArg.FS.writeFile(IDE_PATH, new Uint8Array(ideImage.size));
+            } finally {
+              moduleArg.removeRunDependency(dependency);
+            }
+          });
+        } else if (ideImage) {
+          moduleArg.FS.writeFile(IDE_PATH, ideImage.bytes);
+        }
       },
     ],
     onAbort: (what) => {
@@ -939,8 +1112,16 @@ async function bootQemu(kernel, initrd, ideImage) {
   const { default: createQemu } = await import(new URL(QEMU_JS, location.href).href);
   const instance = await createQemu(moduleArg);
   activeQemuModule = instance;
-  activeIdeImage = ideImage ? { name: ideImage.name, size: ideImage.size } : null;
-  if (activeIdeImage) {
+  activeIdeImage = ideImage ? {
+    name: ideImage.name,
+    size: ideImage.size,
+    source: ideImage.source,
+  } : null;
+  if (persistenceLoadError) {
+    ideStatus.textContent =
+      `The saved disk could not be restored (${persistenceLoadError.message}). ` +
+      "A blank recovery disk was attached; select the original image again.";
+  } else if (activeIdeImage) {
     ideStatus.textContent =
       `${activeIdeImage.name} is attached read/write. Run sync in the guest ` +
       "before downloading a modified copy.";

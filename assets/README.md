@@ -11,7 +11,7 @@ the public commit it was built from.**
 | `zImage-7.1.4.config` | exact kernel config used for `zImage-7.1.4` | same source, seeded from `zImage.config` then normalized with `olddefconfig` | GPL-2.0 |
 | `initramfs-busybox.cpio.gz` | BusyBox userspace, static musl, strict ARMv4 | BusyBox (GPL-2.0) + musl (MIT), built with the `armv4-tc` musl cross toolchain; recipe import into `build/` is a Phase 1 task | GPL-2.0 / MIT |
 | `qemu/qemu-system-arm.wasm` | the emulator, wasm64/TCI, md5 `1f6508c2c92265d7ab0d7653287b057a` | [kmehltretter82/qemu](https://github.com/kmehltretter82/qemu) branch `armv4-boards`, commit `53e1cf80d72127f4e3f5c1a9467ed299619005e5`, built by `build/build-qemu.sh` with emsdk 4.0.10 | GPL-2.0 |
-| `qemu/qemu-system-arm.js` | its Emscripten loader plus the browser display/input bridge, md5 `8a25bb2bb9518f320070c5c598d8ab13` | same build; bridge source is `build/display-canvas.js` in this repository | GPL-2.0 |
+| `qemu/qemu-system-arm.js` | its Emscripten loader plus the browser display/input bridge and IDBFS support, md5 `08a54441b64539548db5ea2ae14dd5ee` | same build; bridge source is `build/display-canvas.js` in this repository | GPL-2.0 |
 
 ## Why the emulator is prebuilt too
 

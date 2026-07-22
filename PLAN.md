@@ -327,8 +327,13 @@ independent guest surfaces.
       uploads a blank 1 MiB image, Linux detects `/dev/sda`, writes `RPCDISK`
       through `pata_platform`, downloads it, and verifies the marker at byte
       4096.
-- [ ] **Persistence (opt-in)**: mirror the disk to IndexedDB (IDBFS) —
-      "Save disk" / "Reset to factory". Default stays ephemeral.
+- [x] **Persistence (opt-in)**: `SAVE DISK` mirrors both the current image and
+      its original uploaded factory image to IndexedDB via Emscripten IDBFS.
+      `BOOT SAVED COPY` is deliberately unchecked after every reload, and
+      `RESET TO FACTORY` resets the next-boot saved copy without rewriting a
+      disk underneath the running guest. The browser regression verifies
+      save → hard reload → restore and factory reset → hard reload → restore.
+      Default stays ephemeral.
 - [ ] **Floppy** — the marquee interaction (click floppy slot → upload image):
       model the 82C711-combo FDC (QEMU's `fdc` core) wired for the ARM FIQ
       pseudo-DMA transfer style the kernel driver uses. The fiddly one; do last.

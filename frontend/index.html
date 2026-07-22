@@ -56,6 +56,14 @@
           DOWNLOAD DISK
         </button>
       </div>
+      <div class="persistence-controls">
+        <label class="persist-choice" id="ide-saved-choice" hidden>
+          <input type="checkbox" id="ide-use-saved">
+          BOOT SAVED COPY
+        </label>
+        <button type="button" id="ide-save" disabled>SAVE DISK</button>
+        <button type="button" id="ide-reset" disabled>RESET TO FACTORY</button>
+      </div>
       <input type="file" id="ide-upload" hidden
              accept=".img,.raw,.bin,application/octet-stream">
       <p id="ide-status" aria-live="polite">

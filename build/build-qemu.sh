@@ -52,7 +52,7 @@ text = open(sys.argv[1]).read()
 m = re.search(r"^c_link_args = (\[.*?\])$", text, re.M)
 print(" ".join(ast.literal_eval(m.group(1))))
 PY
-) --js-library $HERE/stdin-proxy.js --js-library $HERE/display-canvas.js"
+) --js-library $HERE/stdin-proxy.js --js-library $HERE/display-canvas.js -lidbfs.js"
 if [ "${XTERM_PTY:-0}" = 1 ]; then
     LINK_ARGS="${LINK_ARGS//-sPROXY_TO_PTHREAD=1/} --js-library $HERE/emscripten-pty.js"
 fi

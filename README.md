@@ -32,8 +32,8 @@ See [PLAN.md](PLAN.md) for the full roadmap:
    UART; boots to an interactive shell. *(done)*
 2. **The machine wakes up** — VIDC20 framebuffer, IOMD PS/2 keyboard,
    quadrature mouse. *(done)*
-3. **Clickable storage** — IDE image upload/download *(done)*; opt-in
-   persistence and floppy emulation remain.
+3. **Clickable storage** — IDE image upload/download and opt-in browser
+   persistence *(done)*; floppy emulation remains.
 
 ## Layout
 

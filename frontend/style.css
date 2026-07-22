@@ -147,6 +147,26 @@ code { color: var(--amber); }
 }
 .drive-download:active:not(:disabled) { border-bottom-width: 1px; transform: translateY(2px); }
 .drive-download:disabled { color: #6f6d68; opacity: .58; cursor: default; }
+.persistence-controls {
+  display: grid; grid-template-columns: 1fr auto auto; align-items: center;
+  gap: 5px; margin-top: 6px;
+}
+.persist-choice {
+  min-width: 0; display: flex; align-items: center; gap: 4px; color: #b19557;
+  font-size: .48rem; line-height: 1.2; cursor: pointer;
+}
+.persist-choice[hidden] { display: none; }
+.persist-choice input { width: 11px; height: 11px; margin: 0; accent-color: #b98216; }
+.persistence-controls button {
+  padding: 4px 5px; color: #bdb7ac; cursor: pointer; font: inherit;
+  font-size: .47rem; line-height: 1.2; letter-spacing: .025em;
+  background: linear-gradient(#4e5355, #34383a); border: 1px solid #252829;
+  border-bottom-width: 2px; border-radius: 3px;
+}
+.persistence-controls button:active:not(:disabled) {
+  border-bottom-width: 1px; transform: translateY(1px);
+}
+.persistence-controls button:disabled { color: #706e69; opacity: .5; cursor: default; }
 #ide-status { margin: 5px 2px 0; color: #82796d; font-size: .51rem; line-height: 1.4; }
 
 /* Removable boot modules: visually EEPROM/flash packages, functionally a

@@ -380,12 +380,14 @@ independent guest surfaces.
       RiscPC floppy DMA is the only current in-tree `enable_fiq()` user, and
       records the ARM/genirq repair constraints and validation matrix. The
       shipped kernels deliberately remain unchanged.
-- [ ] Send the four pending patches (`~/linux-work/patches/`, needs Karl's
-      authenticated `git send-email`). Preparation completed 2026-07-22: the
-      unrelated fixes are four standalone `[PATCH]` messages with embedded
-      `get_maintainer.pl` routing; all apply to current upstream trees, pass
-      strict checkpatch, and pass separate `git-send-email --dry-run` parsing.
-      Only actual delivery remains.
+- [ ] Send the three pending Linux patches (`~/linux-work/patches/`, needs
+      Karl's authenticated `git send-email`). Preparation completed 2026-07-22:
+      the floppy teardown, Footbridge PCI-window and tick-header fixes are
+      standalone `[PATCH]` messages with embedded `get_maintainer.pl` routing;
+      all apply to current upstream Linux, pass strict checkpatch, and pass
+      separate `git-send-email --dry-run` parsing. Only actual delivery remains.
+      Do **not** send the prepared QEMU MMIO-IDE patch: Karl explicitly chose to
+      keep that as a local finding rather than report it upstream.
 - [x] **About page**: `frontend/about.html` tells the data-sheet-first bug-hunt
       story, links the three public Linux fixes and two public QEMU fixes,
       records the NetBSD and FIQ findings, and diagrams the browser → Emscripten

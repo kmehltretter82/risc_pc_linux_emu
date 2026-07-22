@@ -390,8 +390,10 @@ independent guest surfaces.
       sl82c105) with `tests/functional/` entries; collie is the precedent.
 - [ ] Adopt the upstream Wasm TCG backend when merged (free speed-up over TCI).
 - [ ] Second machine on the page: NetWinder (model already boots; has PCI + Tulip).
-- [ ] Kernel-version badge: wire `armv4-mainline-watch.sh` into CI so the page can
-      say "now booting v7.3-rc1" shortly after each tag.
+- [x] Explicitly **out of scope**: an automatic kernel-version badge and CI
+      mainline watcher. The selector names the exact kernels that are actually
+      shipped; kernel updates remain deliberate local GCC 8 builds followed by
+      the full boot/input/storage gate.
 - [ ] **Other guest OSes** (the name says Linux, but the hardware doesn't care):
   - **RISC OS 5.30** — RISC OS Open relicensed RISC OS 5 under Apache 2.0, so a
     legally redistributable ROM exists (RPCEmu ships one). Needs ROM-at-reset boot

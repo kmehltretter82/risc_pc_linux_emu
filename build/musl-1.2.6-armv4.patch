@@ -1,0 +1,118 @@
+diff --git a/crt/arm/crtn.s b/crt/arm/crtn.s
+index dc020f9..cbccabc 100644
+--- a/crt/arm/crtn.s
++++ b/crt/arm/crtn.s
+@@ -5 +5 @@
+-	bx lr
++	mov pc, lr
+@@ -9 +9 @@
+-	bx lr
++	mov pc, lr
+diff --git a/src/ldso/arm/tlsdesc.S b/src/ldso/arm/tlsdesc.S
+index 3ae133c..ea5d0aa 100644
+--- a/src/ldso/arm/tlsdesc.S
++++ b/src/ldso/arm/tlsdesc.S
+@@ -9 +9 @@ __tlsdesc_static:
+-	bx lr
++	mov pc, lr
+@@ -36 +36 @@ __tlsdesc_dynamic:
+-	bx r0
++	mov pc, r0
+@@ -47 +47 @@ __tlsdesc_dynamic:
+-	bx lr
++	mov pc, lr
+diff --git a/src/setjmp/arm/longjmp.S b/src/setjmp/arm/longjmp.S
+index 8df0b81..4e55f98 100644
+--- a/src/setjmp/arm/longjmp.S
++++ b/src/setjmp/arm/longjmp.S
+@@ -46 +46 @@ longjmp:
+-3:	bx lr
++3:	mov pc, lr
+diff --git a/src/setjmp/arm/setjmp.S b/src/setjmp/arm/setjmp.S
+index 45731d2..dd8d19f 100644
+--- a/src/setjmp/arm/setjmp.S
++++ b/src/setjmp/arm/setjmp.S
+@@ -48 +48 @@ setjmp:
+-3:	bx lr
++3:	mov pc, lr
+diff --git a/src/string/arm/__aeabi_memcpy.s b/src/string/arm/__aeabi_memcpy.s
+index 3a527e4..938517e 100644
+--- a/src/string/arm/__aeabi_memcpy.s
++++ b/src/string/arm/__aeabi_memcpy.s
+@@ -32 +32 @@ __aeabi_memmove:
+-2:	bx    lr
++2:	mov pc, lr
+@@ -45 +45 @@ __aeabi_memcpy:
+-2:	bx    lr
++2:	mov pc, lr
+diff --git a/src/string/arm/__aeabi_memset.s b/src/string/arm/__aeabi_memset.s
+index f9f6058..ad67ca0 100644
+--- a/src/string/arm/__aeabi_memset.s
++++ b/src/string/arm/__aeabi_memset.s
+@@ -31 +31 @@ __aeabi_memset:
+-2:	bx    lr
++2:	mov pc, lr
+diff --git a/src/string/arm/memcpy.S b/src/string/arm/memcpy.S
+index 869e344..b38fcc0 100644
+--- a/src/string/arm/memcpy.S
++++ b/src/string/arm/memcpy.S
+@@ -193 +193 @@ less_than_32_left:
+-	bx      lr
++	mov pc, lr
+@@ -478 +478 @@ copy_last_3_and_return:
+-	bx      lr
++	mov pc, lr
+diff --git a/src/thread/arm/__aeabi_read_tp.s b/src/thread/arm/__aeabi_read_tp.s
+index 2585620..5e715f1 100644
+--- a/src/thread/arm/__aeabi_read_tp.s
++++ b/src/thread/arm/__aeabi_read_tp.s
+@@ -8 +8 @@ __aeabi_read_tp:
+-2:	bx r0
++2:	mov pc, r0
+diff --git a/src/thread/arm/atomics.s b/src/thread/arm/atomics.s
+index da50508..95c6c9e 100644
+--- a/src/thread/arm/atomics.s
++++ b/src/thread/arm/atomics.s
+@@ -8 +8 @@ __a_barrier_dummy:
+-	bx lr
++	mov pc, lr
+@@ -20,2 +20,2 @@ __a_barrier_oldkuser:
+-	bx lr
+-1:	bx ip
++	mov pc, lr
++1:	mov pc, ip
+@@ -29 +29 @@ __a_barrier_v6:
+-	bx lr
++	mov pc, lr
+@@ -37 +37 @@ __a_barrier_v7:
+-	bx lr
++	mov pc, lr
+@@ -47 +47 @@ __a_cas_dummy:
+-	bx lr
++	mov pc, lr
+@@ -62 +62 @@ __a_cas_v6:
+-	bx lr
++	mov pc, lr
+@@ -77 +77 @@ __a_cas_v7:
+-	bx lr
++	mov pc, lr
+@@ -84 +84 @@ __a_gettp_cp15:
+-	bx lr
++	mov pc, lr
+diff --git a/src/thread/arm/clone.s b/src/thread/arm/clone.s
+index 4ff0c0e..87f35da 100644
+--- a/src/thread/arm/clone.s
++++ b/src/thread/arm/clone.s
+@@ -20 +20 @@ __clone:
+-	bx lr
++	mov pc, lr
+@@ -29 +29 @@ __clone:
+-3:	bx r5
++3:	mov pc, r5
+diff --git a/src/thread/arm/syscall_cp.s b/src/thread/arm/syscall_cp.s
+index e607dd4..234e065 100644
+--- a/src/thread/arm/syscall_cp.s
++++ b/src/thread/arm/syscall_cp.s
+@@ -26 +26 @@ __cp_end:
+-	bx lr
++	mov pc, lr

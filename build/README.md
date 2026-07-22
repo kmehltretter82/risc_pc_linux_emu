@@ -1,13 +1,21 @@
-# build/ — Emscripten build of QEMU (Phase 1)
+# build/ — reproducible emulator and userspace builds
 
-Will contain:
+The scripts in this directory produce the prebuilt artifacts served from
+`assets/`:
 
-- `Dockerfile` — pinned emsdk image
+- `env.sh` — pinned emsdk 4.0.10 environment and Wasm build flags
 - dependency cross-build recipes (glib, zlib, libffi, pixman) following
   [ktock/qemu-wasm](https://github.com/ktock/qemu-wasm)
-- QEMU configure/build script for the `qemu/` submodule
+- `build-qemu.sh` — QEMU configure/build script for the `qemu/` submodule
   (`--target-list=arm-softmmu`, Emscripten host, TCI backend, device list
   trimmed to what `-M riscpc` needs)
+- `build-initramfs.sh` — deterministic BusyBox 1.38.0 initramfs build, with its
+  exact config, `/init`, unprivileged `newc` writer and strict ARMv4
+  musl-cross-make inputs beside it
+- `test-provenance.py` — CI gate matching every served binary to the checksums
+  and source pins in `assets/README.md`
 
-Milestone A (before any browser work): the wasm build boots the rpc kernel
-under Emscripten's node runtime.
+`run-node.mjs` boots the RiscPC under Emscripten's Node runtime;
+`test-browser.py` is the full Chromium boot, input, storage and layout gate used
+before GitHub Pages deployment. See `assets/README.md` for the exact source pins
+and rebuild commands.

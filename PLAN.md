@@ -14,8 +14,8 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 |---|---|---|
 | QEMU RiscPC machine | `kmehltretter82/qemu` branch `armv4-boards` | `-M riscpc`: IOMD, 16550 serial, MMIO IDE. Base 11.0.50 → upstream Emscripten build support already in-tree |
 | Mainline kernel for rpc | `~/linux-work/kbuild-rpc-gcc8` | v7.2-rc4 zImage, 3.6 MB. **Must be built with gcc 6–8** (rpc_defconfig silently degrades with gcc ≥ 9 — see `armv4-mainline-watch.sh` CONFIG-LOST check) |
-| Toolchain | `~/linux-work/armv4-tc-gcc8` | strict-ARMv4 musl/BusyBox toolchain |
-| Rootfs | `~/linux-work/armv4-rootfs/` (tree), `armv4-rootfs.img` (32 MB ext2) | BusyBox userspace; cpio initramfs buildable from the tree |
+| Toolchain | `~/linux-work/armv4-tc-gcc8` | strict-ARMv4 GCC 8.5.0/musl 1.2.6 toolchain; reproducible config and ARMv4 patch are in `build/` |
+| Rootfs | `build/busybox-1.38.0.config`, `build/build-initramfs.sh` | deterministic static BusyBox initramfs; no privileged device-node setup required |
 | Boot convention | in the fork's `hw/arm/boot` changes | old-param/NeTTrom-era parameter block; direct `-kernel` boot — **no RISC OS ROM needed** (sidesteps copyright entirely) |
 | Test matrix | `~/linux-work/armv4-boards-test.sh` | 7/7 boot matrix incl. riscpc; use before every deploy |
 | Guest drivers in mainline 7.2 | `acornfb` (VIDC20 fb), `rpcmouse` (quadrature), `rpckbd` (KART serio) | All three present. `rpckbd` lives in **`drivers/input/serio/`**, not `drivers/input/keyboard/`, under `CONFIG_SERIO_RPCKBD`; `atkbd` binds on top of it. The booted kernel already probes it and reports `keyboard reset failed on rpckbd/serio0` — so a KART model has a waiting client |
@@ -46,7 +46,7 @@ GitHub Pages (static files only)
 ├── qemu-system-arm.{js,wasm} Emscripten build of the armv4-boards fork
 └── assets/
     ├── zImage*                       current + stable rpc kernels (prebuilt, gcc-8)
-    ├── initramfs-busybox.cpio.gz     BusyBox initramfs (Phase 1 root)
+    ├── initramfs-busybox.cpio.gz     reproducible BusyBox 1.38.0 initramfs
     └── qemu/qemu-system-arm.{js,wasm} pinned emulator build
 ```
 
@@ -69,20 +69,23 @@ quadrature mouse.
 - [x] Create GitHub repo `risc_pc_linux_emu`; enable Pages (deploy from Actions).
       Re-verified 2026-07-22: public URL returns HTTP 200 and the workflow gates
       deployment on the full Chromium boot/input/storage regression.
-- [ ] Dependencies are our existing forks, pinned as submodules — never copies:
+- [x] Dependencies are our existing forks, pinned as submodules — never copies:
   - `qemu/` → `kmehltretter82/qemu` @ `armv4-boards` (machine model lives here).
   - `linux/` → Karl's linux fork; **create branch `riscpc-emu`**: v7.2-rc4 + the three
     patches from `~/linux-work/patches/kernel/` + the rpc defconfig used for the
     shipped zImage. Push it — every shipped binary must have a public source commit.
-  - `assets/README.md` records provenance for each binary: source repo, branch,
-    exact commit, toolchain (gcc-8/musl), build command.
+  - `assets/README.md` records provenance for each binary: public source, exact
+    commit or release checksum, toolchain (gcc-8/musl), config and build command.
+    `build/test-provenance.py` checks every shipped binary checksum and both
+    submodule pins before CI is allowed to boot or deploy the site.
   - [x] Linux `riscpc-emu` is public at the exact pinned/provenance commit
         `36ea1cf6b8d1c802f4121a8032d4f5d58f5a8283`.
-  - [ ] Publish QEMU commit `89ce8897efa6e104576460345d1911986029f195`
-        before pushing the parent binary update. The local branch contains seven
-        new commits on a patch-equivalent but differently hashed copy of the 11
-        commits now on `origin/armv4-boards`; reconcile that history rather than
-        claiming the current hash is already public.
+  - [x] QEMU commit `f3d9daffc05611137446c4d9690eb3f981b2ab51` is public on
+        `armv4-boards`. On 2026-07-22 the seven new commits were rebased onto the
+        public, patch-equivalent 11-commit base and pushed as a fast-forward. The
+        resulting tree `80e0546ccf114f2cdba86d394d9a22983c03d7a0` is identical
+        to the pre-publication build tree, so the shipped Wasm binary remains an
+        exact build of the public source.
 - [x] Layout:
   ```
   frontend/          # index.html, css/svg art, xterm glue, coi-serviceworker

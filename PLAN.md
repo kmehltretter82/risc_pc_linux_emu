@@ -399,12 +399,23 @@ independent guest surfaces.
       verifies seven findings, five commit links, five architecture stages and
       no horizontal overflow.
 - [ ] Upstream the machine models (riscpc, netwinder, acorn-iomd, dc21285,
-      sl82c105) with `tests/functional/` entries; collie is the precedent.
+      sl82c105). The technical preparation is preserved on the public QEMU
+      fork's `armv4-machines-current` branch at `8bcb41a245`: it is rebased on
+      QEMU master from 2026-07-22, builds cleanly, and its two new functional
+      tests boot RiscPC and NetWinder to an ARMv4 shell while also checking the
+      NetWinder PCI, SL82C105 and Tulip probes. It is **not submission-ready**:
+      current QEMU policy declines contributions containing or derived from
+      AI-generated content, and these models transparently record Claude
+      assistance. A human-authored replacement or an upstream policy exception
+      is required; trailers must not be altered to conceal provenance.
 - [x] Adopt the native Wasm TCG backend without waiting for the upstream merge:
       carry Kohei Tokunaga's complete v4 series in the public QEMU fork, build
       with emsdk 4.0.23, and retain TCI as an opt-in fallback. The clean artifact
       passed Node, Chromium and host-native QEMU validation before deployment.
-- [ ] Second machine on the page: NetWinder (model already boots; has PCI + Tulip).
+- [x] Second-machine page implemented on the separate `netwinder-web` branch
+      at `fc5dc0490a`. It boots the NetWinder kernel and passes Node/Wasm plus
+      Chromium tests, but is intentionally **not** merged into `main` and is
+      therefore not active on GitHub Pages, as requested.
 - [x] Explicitly **out of scope**: an automatic kernel-version badge and CI
       mainline watcher. The selector names the exact kernels that are actually
       shipped; kernel updates remain deliberate local GCC 8 builds followed by
@@ -449,6 +460,7 @@ public commit it was built from. The site footer links every source repo.
 | Pages can't set COOP/COEP headers | coi-serviceworker shim (established pattern) |
 | Kernel needs gcc 6–8 | kernel is a prebuilt committed artifact; CI never builds it; CONFIG-LOST check before updating the artifact |
 | Native Wasm TCG series is not merged upstream yet | carry the reviewed v4 series in the public pinned fork; retain `QEMU_TCG_BACKEND=tci` as a build fallback |
+| QEMU rejects AI-derived patch content | keep the validated machine work in the public fork with honest provenance; upstreaming requires an independently human-authored replacement or a project-approved exception |
 | Safari (no wasm64 / isolation quirks) | build wasm32; Chrome+Firefox are the supported browsers, Safari best-effort |
 | RISC OS ROM copyright | avoided by design: direct `-kernel` boot, authentic to NeTTrom-era Linux bring-up |
 

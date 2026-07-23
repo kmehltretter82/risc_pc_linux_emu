@@ -589,6 +589,110 @@ def main():
                 with page.expect_navigation(wait_until="load", timeout=10000):
                     page.click("#power")
 
+        # Switch the complete emulated board, not just its kernel. NetWinder
+        # has no display or floppy in this QEMU model, but its serial console,
+        # Footbridge PCI host, onboard Tulip and SL82C105 IDE must all probe.
+        netwinder_selector_ok = False
+        netwinder_ok = False
+        netwinder = {}
+        if factory_reset_ok:
+            page.locator('label[for="machine-netwinder"]').click()
+            netwinder = page.evaluate("""() => ({
+                selected: document.querySelector('#machine-netwinder').checked,
+                riscpc: document.querySelector('#machine-riscpc').checked,
+                selectorDisabled: document.querySelector('#machine-selector').disabled,
+                machineStatus: document.querySelector('#machine-selection').textContent,
+                badge: document.querySelector('#machine-badge').textContent,
+                kernel: document.querySelector('#kernel-netwinder').checked,
+                kernelDisabled: document.querySelector('#kernel-netwinder').disabled,
+                kernelVisible: !document.querySelector('#kernel-netwinder')
+                    .closest('.kernel-chip').hidden,
+                currentHidden: document.querySelector('#kernel-current')
+                    .closest('.kernel-chip').hidden,
+                floppyHidden: document.querySelector('#floppy-drive').hidden,
+                floppyControlsHidden:
+                    document.querySelector('#floppy-media-controls').hidden,
+                noSignal: document.querySelector('#nosignal').textContent,
+            })""")
+            netwinder_selector_ok = (
+                netwinder["selected"]
+                and not netwinder["riscpc"]
+                and not netwinder["selectorDisabled"]
+                and "Footbridge PCI" in netwinder["machineStatus"]
+                and netwinder["badge"] == "NETWINDER"
+                and netwinder["kernel"]
+                and not netwinder["kernelDisabled"]
+                and netwinder["kernelVisible"]
+                and netwinder["currentHidden"]
+                and netwinder["floppyHidden"]
+                and netwinder["floppyControlsHidden"]
+                and netwinder["noSignal"] == "SERIAL ONLY"
+            )
+            print("NetWinder selector: "
+                  f"{'works' if netwinder_selector_ok else 'FAILED'} "
+                  f"{netwinder}")
+
+            if netwinder_selector_ok:
+                page.click("#power")
+                netwinder_markers = (
+                    "Machine: Rebel-NetWinder",
+                    "PCI: DC21285 footbridge",
+                    "pata_sl82c105",
+                    "Digital DS21142/43 Tulip",
+                    "BusyBox on ARMv4 -- Linux 7.2.0-rc4+",
+                )
+                netwinder_text = ""
+                waited = 0
+                while waited < deadline:
+                    page.wait_for_timeout(step)
+                    waited += step
+                    netwinder_text = page.evaluate(read_buffer)
+                    if all(marker in netwinder_text for marker in netwinder_markers):
+                        break
+                    if waited % 20000 == 0:
+                        tail = [line for line in netwinder_text.split("\n")
+                                if line.strip()][-1:]
+                        print(f"  NetWinder {waited//1000}s: {tail}")
+
+                netwinder_prompt = any(
+                    line.rstrip().endswith(" #")
+                    for line in netwinder_text.split("\n")
+                )
+                netwinder_uname = False
+                if (all(marker in netwinder_text for marker in netwinder_markers)
+                        and netwinder_prompt):
+                    page.click("#terminal")
+                    page.keyboard.type("uname -m")
+                    page.keyboard.press("Enter")
+                    for _ in range(30):
+                        page.wait_for_timeout(1000)
+                        after = page.evaluate(read_buffer)
+                        if re.search(r"^armv4l\s*$", after, re.M):
+                            netwinder_uname = True
+                            netwinder_text = after
+                            break
+                running_ui = page.evaluate("""() => ({
+                    machineLocked:
+                        document.querySelector('#machine-selector').disabled,
+                    kernelLocked:
+                        document.querySelector('#kernel-selector').disabled,
+                    screenTabIndex: document.querySelector('#screen').tabIndex,
+                })""")
+                netwinder.update(running_ui)
+                netwinder_ok = (
+                    all(marker in netwinder_text for marker in netwinder_markers)
+                    and netwinder_prompt
+                    and netwinder_uname
+                    and running_ui["machineLocked"]
+                    and running_ui["kernelLocked"]
+                    and running_ui["screenTabIndex"] == -1
+                )
+                text = netwinder_text
+                print("NetWinder PCI/Tulip/IDE/BusyBox: "
+                      f"{'works' if netwinder_ok else 'FAILED'} "
+                      f"prompt={netwinder_prompt}, uname={netwinder_uname}, "
+                      f"ui={running_ui}")
+
         # The project story is a deployable page, not just prose in the source
         # tree. Check its five patch links, findings, architecture flow and
         # responsive width as part of the same assembled-site gate.
@@ -627,7 +731,8 @@ def main():
               and machine_input_ok and virtual_keys_ok
               and ide_round_trip_ok and floppy_round_trip_ok
               and persistence_save_ok and hard_off_ok
-              and persistence_restore_ok and factory_reset_ok and about_ok)
+              and persistence_restore_ok and factory_reset_ok
+              and netwinder_selector_ok and netwinder_ok and about_ok)
 
         print("\n--- terminal ---")
         print("\n".join(l for l in text.split("\n") if l.strip()))
@@ -646,7 +751,9 @@ def main():
               f"floppy_round_trip={floppy_round_trip_ok}, "
               f"idbfs_save={persistence_save_ok}, hard_off={hard_off_ok}, "
               f"idbfs_restore={persistence_restore_ok}, "
-              f"factory_reset={factory_reset_ok}, about={about_ok})")
+              f"factory_reset={factory_reset_ok}, "
+              f"netwinder_selector={netwinder_selector_ok}, "
+              f"netwinder={netwinder_ok}, about={about_ok})")
         browser.close()
         return 0 if ok else 1
 

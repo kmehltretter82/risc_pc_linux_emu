@@ -50,6 +50,9 @@ jobs:
           .venv/bin/python build/test-browser.py http://localhost:8777/ 420
 
   deploy:
+    # Feature branches may run the verification job manually, but only main
+    # is allowed to replace the public GitHub Pages site.
+    if: github.ref == 'refs/heads/main'
     needs: verify
     runs-on: ubuntu-latest
     environment:

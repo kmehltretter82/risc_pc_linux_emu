@@ -1,25 +1,60 @@
 // SPDX-License-Identifier: GPL-2.0
-// Browser front panel for the emulated RISC PC. The canvas is the VIDC20
-// framebuffer and the VT220 is the separate, real UART console.
+// Browser front panel for the emulated ARMv4 machines. The RISC PC canvas is
+// its VIDC20 framebuffer and the VT220 is the separate, real UART console.
 
 "use strict";
 
 const ASSETS = {
   initrd: "assets/initramfs-busybox.cpio.gz",
 };
+const MACHINES = Object.freeze({
+  riscpc: Object.freeze({
+    name: "Acorn RISC PC 600",
+    badge: "RISC PC 600",
+    qemuMachine: "riscpc",
+    kernel: "current",
+    kernelAppend: "console=tty0 console=ttyS0 rdinit=/init",
+    extraSerial: Object.freeze([]),
+    display: true,
+    floppy: true,
+    selection: "RISC PC: IOMD, VIDC20, KART input, IDE and floppy.",
+  }),
+  netwinder: Object.freeze({
+    name: "Rebel NetWinder",
+    badge: "NETWINDER",
+    qemuMachine: "netwinder",
+    kernel: "netwinder",
+    kernelAppend: "console=ttyS0 rdinit=/init",
+    // NetWinder exposes three 16550 channels. The first is the VT220; attach
+    // null backends to the other two so QEMU never tries to open host stdio.
+    extraSerial: Object.freeze(["-serial", "null", "-serial", "null"]),
+    display: false,
+    floppy: false,
+    selection: "NetWinder: Footbridge PCI, onboard Tulip Ethernet and IDE; serial-only display.",
+  }),
+});
 const KERNELS = Object.freeze({
   current: Object.freeze({
     version: "7.2-rc4+",
     url: "assets/zImage",
     detail: "current kernel with three Risc PC fixes",
+    machine: "riscpc",
   }),
   stable: Object.freeze({
     version: "7.1.4",
     url: "assets/zImage-7.1.4",
     detail: "stable kernel with the upstream zImage build fix",
+    machine: "riscpc",
+  }),
+  netwinder: Object.freeze({
+    version: "7.2-rc4+",
+    url: "assets/zImage-netwinder",
+    detail: "current kernel with the Footbridge PCI-window fix",
+    machine: "netwinder",
   }),
 });
 const KERNEL_STORAGE_KEY = "riscpc-boot-kernel";
+const MACHINE_STORAGE_KEY = "riscpc-emulation-target";
 // Prebuilt by build/build-qemu.sh; provenance in assets/README.md.
 const QEMU_JS = "assets/qemu/qemu-system-arm.js";
 const IDE_PATH = "/assets/hda.img";
@@ -38,20 +73,6 @@ const IDE_PERSIST_CURRENT = `${IDE_PERSIST_ROOT}/hda.img`;
 const IDE_PERSIST_FACTORY = `${IDE_PERSIST_ROOT}/factory.img`;
 const IDE_PERSIST_META_KEY = "riscpc-persistent-ide";
 
-// QEMU argv. -serial stdio is picked up by emscripten as the module's stdout,
-// which is proxied from the worker running main() back to this thread.
-const QEMU_ARGS = [
-  "-M", "riscpc",
-  "-kernel", "/assets/zImage",
-  "-initrd", "/assets/initramfs-busybox.cpio.gz",
-  // Both consoles live at once: tty0 puts the kernel log on the VIDC20
-  // framebuffer, ttyS0 comes last so it stays /dev/console and the VT220
-  // beside the machine remains the interactive one.
-  "-append", "console=tty0 console=ttyS0 rdinit=/init",
-  "-serial", "stdio",
-  "-display", "none",
-];
-
 // The monitor. qemu/ui/wasm-canvas.c pushes each VIDC20 frame out to this
 // canvas from QEMU's worker; build/display-canvas.js does the blit on this
 // thread. The canvas resizes itself to whatever mode the guest programs -
@@ -59,8 +80,10 @@ const QEMU_ARGS = [
 // guest rather than the other way round.
 const monitorCanvas = document.getElementById("screen");
 const nosignal = document.getElementById("nosignal");
+let activeMachineKey = null;
 self.__rpcCanvas = monitorCanvas;
 self.__rpcOnResize = (w, h) => {
+  if (!MACHINES[activeMachineKey]?.display) return;
   nosignal.hidden = true;
   monitorCanvas.classList.add("live");
   document.getElementById("machine-caption").textContent =
@@ -167,7 +190,8 @@ const monitorHeldKeys = new Map();
 const monitorHeldButtons = new Set();
 
 function monitorHasFocus() {
-  return document.activeElement === monitorCanvas;
+  return MACHINES[activeMachineKey]?.display
+    && document.activeElement === monitorCanvas;
 }
 
 function releaseMonitorInput() {
@@ -201,6 +225,7 @@ addEventListener("keyup", (event) => {
 
 monitorCanvas.addEventListener("blur", releaseMonitorInput);
 monitorCanvas.addEventListener("pointerdown", (event) => {
+  if (!MACHINES[activeMachineKey]?.display) return;
   monitorCanvas.focus({ preventScroll: true });
   if (event.button < 0 || event.button > 2) return;
   event.preventDefault();
@@ -607,6 +632,12 @@ addEventListener("blur", () => {
 
 const powerBtn = document.getElementById("power");
 const led = document.getElementById("power-led");
+const machinePanel = document.querySelector(".machine");
+const machineBadge = document.getElementById("machine-badge");
+const machineCaption = document.getElementById("machine-caption");
+const machineSelector = document.getElementById("machine-selector");
+const machineSelection = document.getElementById("machine-selection");
+const machineInputs = [...document.querySelectorAll('input[name="machine"]')];
 const kernelSelector = document.getElementById("kernel-selector");
 const kernelSelection = document.getElementById("kernel-selection");
 const kernelInputs = [...document.querySelectorAll('input[name="kernel"]')];
@@ -623,6 +654,7 @@ const floppyDrive = document.getElementById("floppy-drive");
 const floppyUpload = document.getElementById("floppy-upload");
 const floppyDownload = document.getElementById("floppy-download");
 const floppyStatus = document.getElementById("floppy-status");
+const floppyMediaControls = document.getElementById("floppy-media-controls");
 let powerState = "off";
 let selectedIdeImage = null;
 let activeIdeImage = null;
@@ -715,8 +747,9 @@ function updateFloppyControls() {
 }
 
 function lockFloppySelection(locked) {
-  floppyDrive.disabled = locked || floppyLoading;
-  floppyUpload.disabled = locked || floppyLoading;
+  const unavailable = !selectedMachine().floppy;
+  floppyDrive.disabled = unavailable || locked || floppyLoading;
+  floppyUpload.disabled = unavailable || locked || floppyLoading;
 }
 
 function selectedIdeForBoot() {
@@ -924,11 +957,28 @@ if (savedIdeImage) {
     "to use it; the default remains ephemeral.";
 }
 
-function restoreKernelSelection() {
-  let key = "current";
+function selectedMachineKey() {
+  const input = machineInputs.find((candidate) => candidate.checked);
+  return MACHINES[input?.value] ? input.value : "riscpc";
+}
+
+function selectedMachine() {
+  return MACHINES[selectedMachineKey()];
+}
+
+function kernelStorageKey(machineKey) {
+  return `${KERNEL_STORAGE_KEY}-${machineKey}`;
+}
+
+function restoreKernelSelection(machineKey = selectedMachineKey()) {
+  const target = MACHINES[machineKey] || MACHINES.riscpc;
+  let key = target.kernel;
   try {
-    const saved = sessionStorage.getItem(KERNEL_STORAGE_KEY);
-    if (KERNELS[saved]) key = saved;
+    // Read the old single-machine key as a one-time compatibility fallback.
+    const saved = sessionStorage.getItem(kernelStorageKey(machineKey))
+      || (machineKey === "riscpc"
+        ? sessionStorage.getItem(KERNEL_STORAGE_KEY) : null);
+    if (KERNELS[saved]?.machine === machineKey) key = saved;
   } catch (err) {
     console.warn("kernel selection could not be restored", err);
   }
@@ -939,7 +989,9 @@ function restoreKernelSelection() {
 
 function selectedKernel() {
   const input = kernelInputs.find((candidate) => candidate.checked);
-  return KERNELS[input?.value] || KERNELS.current;
+  const target = selectedMachineKey();
+  const choice = KERNELS[input?.value];
+  return choice?.machine === target ? choice : KERNELS[MACHINES[target].kernel];
 }
 
 function updateKernelSelection() {
@@ -951,20 +1003,89 @@ function lockKernelSelection(locked) {
   kernelSelector.disabled = locked;
 }
 
+function lockMachineSelection(locked) {
+  machineSelector.disabled = locked;
+}
+
+function applyMachineSelection() {
+  const key = selectedMachineKey();
+  const target = MACHINES[key];
+  machinePanel.dataset.target = key;
+  machineBadge.textContent = target.badge;
+  machineSelection.textContent = target.selection;
+  nosignal.textContent = target.display ? "NO SIGNAL" : "SERIAL ONLY";
+  monitorCanvas.tabIndex = target.display ? 0 : -1;
+  monitorCanvas.setAttribute(
+    "aria-label",
+    target.display
+      ? "RISC PC monitor, VIDC20 output; focus for machine keyboard and mouse input"
+      : "NetWinder has no emulated display; use the serial terminal",
+  );
+  machineCaption.textContent = target.display
+    ? "VIDC20 drives the monitor: this is the machine's own framebuffer, " +
+      "not the serial console. Both are live at once, as on a real bring-up bench."
+    : "This NetWinder model is serial-only. Its Footbridge PCI bus, onboard " +
+      "Tulip Ethernet and IDE controller report through the VT220 terminal.";
+
+  if (!target.display) {
+    releaseMonitorInput();
+    monitorCanvas.blur();
+    monitorCanvas.classList.remove("live");
+    nosignal.hidden = false;
+  }
+  floppyDrive.hidden = !target.floppy;
+  floppyMediaControls.hidden = !target.floppy;
+  lockFloppySelection(powerState !== "off");
+
+  for (const input of kernelInputs) {
+    const compatible = KERNELS[input.value]?.machine === key;
+    input.disabled = !compatible;
+    input.closest(".kernel-chip").hidden = !compatible;
+  }
+  restoreKernelSelection(key);
+}
+
+function restoreMachineSelection() {
+  let key = "riscpc";
+  try {
+    const saved = sessionStorage.getItem(MACHINE_STORAGE_KEY);
+    if (MACHINES[saved]) key = saved;
+  } catch (err) {
+    console.warn("machine selection could not be restored", err);
+  }
+  const input = machineInputs.find((candidate) => candidate.value === key);
+  if (input) input.checked = true;
+  applyMachineSelection();
+}
+
 for (const input of kernelInputs) {
   input.addEventListener("change", () => {
     if (!input.checked) return;
     try {
-      sessionStorage.setItem(KERNEL_STORAGE_KEY, input.value);
+      sessionStorage.setItem(
+        kernelStorageKey(selectedMachineKey()), input.value,
+      );
     } catch (err) {
       console.warn("kernel selection could not be saved", err);
     }
     updateKernelSelection();
   });
 }
-restoreKernelSelection();
 
-term.writeln("Acorn RISC PC 600 · serial console · 115200 8N1");
+for (const input of machineInputs) {
+  input.addEventListener("change", () => {
+    if (!input.checked) return;
+    try {
+      sessionStorage.setItem(MACHINE_STORAGE_KEY, input.value);
+    } catch (err) {
+      console.warn("machine selection could not be saved", err);
+    }
+    applyMachineSelection();
+  });
+}
+restoreMachineSelection();
+
+term.writeln("ARMv4 hardware workbench · serial console · 115200 8N1");
 term.writeln("");
 term.writeln("Machine is powered off. Press POWER.");
 
@@ -977,6 +1098,7 @@ powerBtn.addEventListener("click", async () => {
 
   powerState = "starting";
   powerBtn.disabled = true;
+  lockMachineSelection(true);
   lockKernelSelection(true);
   lockIdeSelection(true);
   lockFloppySelection(true);
@@ -994,6 +1116,8 @@ powerBtn.addEventListener("click", async () => {
     led.classList.remove("busy");
     term.writeln(`\r\n\x1b[31m${err.message}\x1b[0m`);
     powerBtn.disabled = false;
+    activeMachineKey = null;
+    lockMachineSelection(false);
     lockKernelSelection(false);
     lockIdeSelection(false);
     lockFloppySelection(false);
@@ -1050,23 +1174,35 @@ async function powerOn() {
     throw new Error("emulator not deployed");
   }
 
+  const machineKey = selectedMachineKey();
+  const target = MACHINES[machineKey];
   const choice = selectedKernel();
   const kernel = await fetchWithProgress(choice.url, `kernel ${choice.version}`);
   const initrd = await fetchWithProgress(ASSETS.initrd, "initramfs");
   term.writeln("");
-  await bootQemu(kernel, initrd, selectedIdeForBoot(), selectedFloppyImage);
+  await bootQemu(
+    machineKey,
+    kernel,
+    initrd,
+    selectedIdeForBoot(),
+    target.floppy ? selectedFloppyImage : null,
+  );
 }
 
-async function bootQemu(kernel, initrd, ideImage, floppyImage) {
+async function bootQemu(machineKey, kernel, initrd, ideImage, floppyImage) {
+  const target = MACHINES[machineKey];
+  activeMachineKey = machineKey;
   term.reset();
   term.focus();
 
   releaseMonitorInput();
-  self.__rpcMachineInput = { events: [], head: 0 };
-  self.__rpcInputStats = { queued: 0, popped: 0, poppedByType: {} };
+  self.__rpcMachineInput = target.display ? { events: [], head: 0 } : null;
+  self.__rpcInputStats = target.display
+    ? { queued: 0, popped: 0, poppedByType: {} } : null;
   monitorCanvas.__rpcReady = false;
   monitorCanvas.__rpcImage = null;
   monitorCanvas.classList.remove("live");
+  nosignal.textContent = target.display ? "NO SIGNAL" : "SERIAL ONLY";
   nosignal.hidden = false;
   persistenceReady = false;
 
@@ -1115,7 +1251,17 @@ async function bootQemu(kernel, initrd, ideImage, floppyImage) {
   const writeLine = (line) =>
     term.write(line.replace(/\n/g, "\r\n") + "\r\n");
 
-  const qemuArguments = [...QEMU_ARGS];
+  // -serial stdio is picked up by Emscripten as Module.stdout. RISC PC also
+  // keeps tty0 alive for its VIDC20 framebuffer; NetWinder is serial-only.
+  const qemuArguments = [
+    "-M", target.qemuMachine,
+    "-kernel", "/assets/zImage",
+    "-initrd", "/assets/initramfs-busybox.cpio.gz",
+    "-append", target.kernelAppend,
+    "-serial", "stdio",
+    ...target.extraSerial,
+    "-display", "none",
+  ];
   if (ideImage) {
     qemuArguments.push(
       "-drive", `file=${IDE_PATH},format=raw,if=ide,index=0`,
@@ -1203,8 +1349,10 @@ async function bootQemu(kernel, initrd, ideImage, floppyImage) {
       finishSerial();
       term.writeln("\r\n\x1b[33m[machine halted]\x1b[0m");
       powerState = "off";
+      activeMachineKey = null;
       led.classList.remove("on");
       powerBtn.disabled = false;
+      lockMachineSelection(false);
       lockKernelSelection(false);
       lockIdeSelection(false);
       lockFloppySelection(false);

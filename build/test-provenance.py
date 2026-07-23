@@ -14,6 +14,7 @@ README_PATH = PROJECT_DIR / "assets" / "README.md"
 BINARY_ASSETS = {
     "zImage": PROJECT_DIR / "assets" / "zImage",
     "zImage-7.1.4": PROJECT_DIR / "assets" / "zImage-7.1.4",
+    "zImage-netwinder": PROJECT_DIR / "assets" / "zImage-netwinder",
     "initramfs-busybox.cpio.gz": (
         PROJECT_DIR / "assets" / "initramfs-busybox.cpio.gz"
     ),

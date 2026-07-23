@@ -128,6 +128,55 @@ code { color: var(--amber); }
 #power:active { border-bottom-width: 1px; transform: translateY(2px); }
 #power:disabled { opacity: .55; cursor: default; }
 
+/* The same physical bring-up bench can host either emulated board. These are
+   machine nameplates rather than boot media; the EEPROM packages below remain
+   a separate kernel selector. */
+.machine-selector {
+  margin: 10px 0 0; padding: .4rem .55rem .45rem; width: 360px;
+  min-inline-size: 0; color: #969ca0; background: linear-gradient(#282d31, #1d2124);
+  border: 1px solid #4c555b; border-radius: 5px;
+  box-shadow: inset 0 1px 5px rgba(0,0,0,.65), 0 2px 5px rgba(0,0,0,.3);
+}
+.machine-selector legend {
+  padding: 0 .4rem; color: #899198; font-size: .56rem; letter-spacing: .16em;
+}
+.machine-choices { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; }
+.machine-choice { display: block; cursor: pointer; }
+.machine-choice input {
+  position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
+}
+.machine-choice > span {
+  display: flex; min-height: 43px; padding: 6px 7px; flex-direction: column;
+  align-items: center; justify-content: center; gap: 3px; color: #aab0b4;
+  text-align: center; background: linear-gradient(#3f474c, #292e32);
+  border: 1px solid #171a1c; border-bottom-width: 3px; border-radius: 3px;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.12);
+}
+.machine-choice strong { font-size: .61rem; font-weight: 600; }
+.machine-choice small { color: #747e85; font-size: .45rem; letter-spacing: .045em; }
+.machine-choice input:checked + span {
+  color: #d7e9f4; border-color: #3a7699;
+  box-shadow: inset 0 1px 1px rgba(255,255,255,.12), 0 0 7px rgba(65,159,211,.28);
+}
+.machine-choice input:checked + span small { color: #78acce; }
+.machine-choice input:focus-visible + span { outline: 2px solid #7abaff; outline-offset: 2px; }
+.machine-selector:disabled .machine-choice { cursor: default; }
+.machine-selector:disabled .machine-choice > span { opacity: .58; }
+#machine-selection {
+  margin: 5px 3px 0; color: #7f8990; font-size: .5rem; line-height: 1.35;
+  text-align: center;
+}
+
+/* The NetWinder is presented as a darker late-1990s appliance on the same
+   bench. Its current QEMU model is serial-only, so the monitor remains dark. */
+.machine[data-target="netwinder"] .case {
+  background: linear-gradient(#879297, #5c666b);
+  box-shadow: inset 0 -4px 8px rgba(0,0,0,.38), 0 3px 8px rgba(0,0,0,.45);
+}
+.machine[data-target="netwinder"] .badge {
+  color: #d3e0e4; border-color: #455156; background: rgba(31,39,43,.45);
+}
+
 /* The internal IDE drive is exposed as a removable workbench component. The
    real drive lived inside the case; the open bay makes its raw image tangible
    without pretending the Risc PC had a front-panel hard-disk cartridge. */
@@ -217,6 +266,7 @@ code { color: var(--amber); }
 }
 .kernel-chips { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; padding: 5px 6px; }
 .kernel-chip { display: block; cursor: pointer; }
+.kernel-chip[hidden] { display: none; }
 .kernel-chip input {
   position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none;
 }

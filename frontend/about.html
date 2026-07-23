@@ -4,12 +4,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>About the RISC PC browser emulator</title>
+<title>About the ARMv4 browser workbench</title>
 <link rel="stylesheet" href="style.css">
 </head>
 <body class="about-page">
 <header class="about-header">
-  <h1>Acorn RISC PC <span class="dim">· the bug-hunt behind the browser machine</span></h1>
+  <h1>ARMv4 workbench <span class="dim">· the bug-hunt behind the browser machines</span></h1>
   <nav aria-label="Project navigation">
     <a href="index.html">LIVE MACHINE</a>
     <a href="https://github.com/kmehltretter82/risc_pc_linux_emu">SOURCE</a>
@@ -32,7 +32,8 @@
       The result is the machine on the previous page: a real ARMv4 Linux kernel
       running inside QEMU, compiled to WebAssembly, with its own VIDC20 screen,
       keyboard, mouse, IDE disk, floppy controller and a separate serial VT220.
-      Nothing runs on a backend server.
+      The same page can switch to a serial-only NetWinder with Footbridge PCI,
+      SL82C105 IDE and Tulip Ethernet. Nothing runs on a backend server.
     </p>
   </section>
 
@@ -185,8 +186,8 @@
         <span>Wasm TCG runs translated ARMv4 blocks; MEMFS backs removable media</span>
       </li>
       <li>
-        <strong>RISC PC hardware</strong>
-        <span>SA-110, IOMD, VIDC20, KART, IDE, FDC and 16550 UART</span>
+        <strong>Selected ARMv4 board</strong>
+        <span>RISC PC IOMD/VIDC20 or NetWinder Footbridge PCI/Tulip hardware</span>
       </li>
       <li>
         <strong>Mainline Linux</strong>
@@ -213,7 +214,8 @@
       files. Before deployment, headless Chromium must boot the stable kernel,
       draw a non-empty 640×480 framebuffer, exercise physical and on-screen
       input, round-trip writes through IDE and floppy images, cut power, and
-      restore the opt-in IndexedDB copy.
+      restore the opt-in IndexedDB copy. It then switches to NetWinder and must
+      boot through PCI, SL82C105 IDE and Tulip discovery to an interactive shell.
     </p>
     <div class="about-actions">
       <a href="index.html">POWER ON THE MACHINE</a>

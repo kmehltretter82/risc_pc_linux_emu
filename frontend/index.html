@@ -4,14 +4,14 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Acorn RISC PC · mainline Linux · in your browser</title>
+<title>ARMv4 workbench · RISC PC and NetWinder · Linux in your browser</title>
 <link rel="stylesheet" href="vendor/xterm.css">
 <link rel="stylesheet" href="style.css">
 <script src="coi-serviceworker.js"></script>
 </head>
 <body>
 <header>
-  <h1>Acorn RISC PC <span class="dim">(1994, ARMv4)</span> · mainline Linux · WebAssembly</h1>
+  <h1>ARMv4 workbench <span class="dim">(RISC PC · NetWinder)</span> · mainline Linux · WebAssembly</h1>
 </header>
 
 <div class="bench">
@@ -30,7 +30,7 @@
       <div class="monitor-foot"></div>
     </div>
     <div class="case">
-      <span class="badge">RISC PC 600</span>
+      <span class="badge" id="machine-badge">RISC PC 600</span>
       <button type="button" class="floppy-slot" id="floppy-drive"
               aria-label="Select a raw floppy disk image"
               aria-describedby="floppy-status"
@@ -41,7 +41,7 @@
       </div>
       <span class="serial-plug serial-plug-case" id="serial-plug-case" aria-hidden="true"></span>
     </div>
-    <div class="floppy-media-controls">
+    <div class="floppy-media-controls" id="floppy-media-controls">
       <input type="file" id="floppy-upload" hidden
              accept=".img,.ima,.raw,.bin,application/octet-stream">
       <p id="floppy-status" aria-live="polite">
@@ -51,6 +51,29 @@
         DOWNLOAD FLOPPY
       </button>
     </div>
+    <fieldset class="machine-selector" id="machine-selector"
+              aria-describedby="machine-selection">
+      <legend>EMULATION TARGET</legend>
+      <div class="machine-choices">
+        <label class="machine-choice" for="machine-riscpc">
+          <input type="radio" id="machine-riscpc" name="machine"
+                 value="riscpc" checked>
+          <span>
+            <strong>Acorn RISC PC 600</strong>
+            <small>1994 · IOMD · VIDC20</small>
+          </span>
+        </label>
+        <label class="machine-choice" for="machine-netwinder">
+          <input type="radio" id="machine-netwinder" name="machine"
+                 value="netwinder">
+          <span>
+            <strong>Rebel NetWinder</strong>
+            <small>1998 · FOOTBRIDGE · TULIP</small>
+          </span>
+        </label>
+      </div>
+      <p id="machine-selection" aria-live="polite"></p>
+    </fieldset>
     <fieldset class="drive-bay" id="drive-bay" aria-describedby="ide-status">
       <legend>INTERNAL IDE BAY</legend>
       <div class="drive-controls">
@@ -98,6 +121,14 @@
           <span class="kernel-chip-body">
             <strong>Linux 7.1.4</strong>
             <small>STABLE · 1 BUILD BACKPORT</small>
+          </span>
+        </label>
+        <label class="kernel-chip" for="kernel-netwinder" hidden>
+          <input type="radio" id="kernel-netwinder" name="kernel"
+                 value="netwinder">
+          <span class="kernel-chip-body">
+            <strong>Linux 7.2-rc4+</strong>
+            <small>NETWINDER · FOOTBRIDGE FIX</small>
           </span>
         </label>
       </div>

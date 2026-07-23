@@ -3,6 +3,7 @@
 // Usage: node build/run-node.mjs [assets-dir] [kernel-file]
 // Set QEMU_BUILD_OUT to test a side build without replacing build/out.
 // Set QEMU_BOOT_TEST=1 for a non-interactive BusyBox + uname smoke test.
+// Set QEMU_MACHINE=netwinder to boot the serial-only NetWinder target.
 //
 // The generated loader is an ES module exporting a factory, so this is an
 // .mjs and imports it. Assets are read from disk and written into MEMFS,
@@ -17,7 +18,26 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 
 const assetsDir = path.resolve(process.argv[2] || path.join(here, "..", "assets"));
-const kernelFile = process.argv[3] || "zImage";
+const machineKey = process.env.QEMU_MACHINE || "riscpc";
+const machines = {
+  riscpc: {
+    qemu: "riscpc",
+    kernel: "zImage",
+    append: "console=tty0 console=ttyS0 rdinit=/init",
+    extraSerial: [],
+  },
+  netwinder: {
+    qemu: "netwinder",
+    kernel: "zImage-netwinder",
+    append: "console=ttyS0 rdinit=/init",
+    extraSerial: ["-serial", "null", "-serial", "null"],
+  },
+};
+const machine = machines[machineKey];
+if (!machine) {
+  throw new Error(`QEMU_MACHINE must be one of: ${Object.keys(machines).join(", ")}`);
+}
+const kernelFile = process.argv[3] || machine.kernel;
 const qemuBuildOut = path.resolve(process.env.QEMU_BUILD_OUT || path.join(here, "out"));
 const qemuJs = path.join(qemuBuildOut, "qemu-system-arm.js");
 
@@ -58,11 +78,12 @@ function stdout(byte) {
 
 const moduleArg = {
   arguments: [
-    "-M", "riscpc",
+    "-M", machine.qemu,
     "-kernel", "/assets/zImage",
     "-initrd", "/assets/initramfs-busybox.cpio.gz",
-    "-append", "console=tty0 console=ttyS0 rdinit=/init",
+    "-append", machine.append,
     "-serial", "stdio",
+    ...machine.extraSerial,
     "-display", "none",
   ],
   stdout,
@@ -82,6 +103,9 @@ const moduleArg = {
   },
 };
 
-process.stderr.write(`[harness] qemu=${qemuJs} assets=${assetsDir} kernel=${kernelFile}\n`);
+process.stderr.write(
+  `[harness] qemu=${qemuJs} machine=${machineKey} ` +
+  `assets=${assetsDir} kernel=${kernelFile}\n`,
+);
 const createQemu = (await import(pathToFileURL(qemuJs).href)).default;
 await createQemu(moduleArg);

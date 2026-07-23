@@ -1,10 +1,15 @@
 # RiscPC in the Browser — Project Plan
 
-**Pitch:** An Acorn RISC PC (1994, ARMv4) booting current mainline Linux, emulated by
-QEMU compiled to WebAssembly, entirely inside one static web page on GitHub Pages.
-No server, no plugins. Faster than the real machine, in a browser tab.
+**Pitch:** An Acorn RISC PC (1994) and Rebel NetWinder (1998), both ARMv4,
+booting current mainline Linux under QEMU compiled to WebAssembly, entirely
+inside one static web page on GitHub Pages. No server, no plugins.
 
 **Repo:** `kmehltretter82/risc_pc_linux_emu` · **Live URL:** `https://kmehltretter82.github.io/risc_pc_linux_emu/`
+
+**Branch scope:** The selectable NetWinder work is isolated on
+`netwinder-web`. It is not part of the live site: automatic pushes target only
+`main`, and the deploy job itself rejects every non-`main` ref, including a
+manual workflow run from this branch.
 
 ---
 
@@ -13,6 +18,7 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 | Piece | Where | Notes |
 |---|---|---|
 | QEMU RiscPC machine | `kmehltretter82/qemu` branch `armv4-boards` | `-M riscpc`: IOMD, 16550 serial, MMIO IDE. Base 11.0.50 → upstream Emscripten build support already in-tree |
+| QEMU NetWinder machine | same branch and Wasm binary | `-M netwinder`: DC21285 Footbridge PCI, onboard Tulip Ethernet, SL82C105 IDE and serial console |
 | Mainline kernel for rpc | `~/linux-work/kbuild-rpc-gcc8` | v7.2-rc4 zImage, 3.6 MB. **Must be built with gcc 6–8** (rpc_defconfig silently degrades with gcc ≥ 9 — see `armv4-mainline-watch.sh` CONFIG-LOST check) |
 | Toolchain | `~/linux-work/armv4-tc-gcc8` | strict-ARMv4 GCC 8.5.0/musl 1.2.6 toolchain; reproducible config and ARMv4 patch are in `build/` |
 | Rootfs | `build/busybox-1.38.0.config`, `build/build-initramfs.sh` | deterministic static BusyBox initramfs; no privileged device-node setup required |
@@ -42,12 +48,12 @@ Boot-time BogoMIPS is only a sanity signal, not a controlled benchmark.
 
 ```
 GitHub Pages (static files only)
-├── index.html + art          RiscPC case, monitor, VT220 bezel (CSS/SVG)
+├── index.html + art          board selector, case, monitor, VT220 bezel (CSS/SVG)
 ├── coi-serviceworker.js      enables COOP/COEP → SharedArrayBuffer on Pages
 ├── xterm.js                  terminal glass inside the VT220 bezel
 ├── qemu-system-arm.{js,wasm} Emscripten build of the armv4-boards fork
 └── assets/
-    ├── zImage*                       current + stable rpc kernels (prebuilt, gcc-8)
+    ├── zImage*                       current/stable rpc + current NetWinder kernels
     ├── initramfs-busybox.cpio.gz     reproducible BusyBox 1.38.0 initramfs
     └── qemu/qemu-system-arm.{js,wasm} pinned emulator build
 ```
@@ -55,10 +61,11 @@ GitHub Pages (static files only)
 IDE and floppy media are selected by the visitor and stay browser-local; the
 site does not ship a writable factory disk image.
 
-Boot flow in the tab: click power button → fetch assets with progress indicator →
-drop them into Emscripten's in-memory FS → start QEMU with
-`-M riscpc -kernel zImage -initrd rootfs.cpio.gz -append 'console=tty0 console=ttyS0 rdinit=/init'`
-→ VIDC20 bridged to the monitor canvas and the UART chardev bridged to xterm.js.
+Boot flow in the tab: select a board and compatible kernel → click power → fetch
+assets with a progress indicator → drop them into Emscripten's in-memory FS →
+start QEMU with `-M riscpc` or `-M netwinder`, direct kernel/initramfs loading,
+and `console=ttyS0`. RISC PC also enables `console=tty0` and bridges VIDC20 to
+the monitor canvas; both boards bridge their first UART chardev to xterm.js.
 
 Input routing model: focus the terminal → bytes to the UART; focus the monitor →
 scancodes and relative mouse events to the machine's own KART/PS/2 keyboard and
@@ -72,7 +79,7 @@ quadrature mouse.
       Re-verified 2026-07-22: public URL returns HTTP 200 and the workflow gates
       deployment on the full Chromium boot/input/storage regression.
 - [x] Dependencies are our existing forks, pinned as submodules — never copies:
-  - `qemu/` → `kmehltretter82/qemu` @ `armv4-boards` (machine model lives here).
+  - `qemu/` → `kmehltretter82/qemu` @ `armv4-boards` (both machine models live here).
   - `linux/` → Karl's linux fork; **create branch `riscpc-emu`**: v7.2-rc4 + the three
     patches from `~/linux-work/patches/kernel/` + the rpc defconfig used for the
     shipped zImage. Push it — every shipped binary must have a public source commit.
@@ -97,7 +104,7 @@ quadrature mouse.
   .github/workflows/pages.yml
   PLAN.md            # this file
   ```
-- [x] Commit the two prebuilt kernels (about 3.6 MB each), 0.8 MB BusyBox
+- [x] Commit the three prebuilt kernels (about 3.5–3.6 MB each), 0.8 MB BusyBox
       initramfs and 17.2 MB Wasm emulator as plain files, all under Pages/repo
       limits. Writable IDE/floppy images are visitor-supplied instead of a
       committed 32 MB factory disk. Kernels are built **locally** with the gcc-8
@@ -136,8 +143,10 @@ physical keyboard types over the serial line when the terminal has focus.
 
 **Status (2026-07-23): done.** The guest boots to an interactive shell in
 Chromium — `build/test-browser.py` presses POWER, waits for the BusyBox banner,
-then types `uname -m` and asserts the guest answers `armv4l`; that is the gate
-CI enforces before deploying. `build/run-node.mjs` is the same check headless.
+then types `uname -m` and asserts the guest answers `armv4l`; it now repeats the
+boot on NetWinder and requires its Footbridge PCI, SL82C105 and Tulip probes.
+That is the gate CI enforces before deploying. `build/run-node.mjs` can perform
+the same headless check for either board.
 Built: emsdk 4.0.23 + clean deps (`build/build-deps.sh`), wasm64/native-Wasm-TCG
 QEMU (`build/build-qemu.sh`, 17.2 MB `.wasm`), the RiscPC/VT220 scene,
 coi-serviceworker, `build/serve.py` for local COOP/COEP.
@@ -404,7 +413,16 @@ independent guest surfaces.
       carry Kohei Tokunaga's complete v4 series in the public QEMU fork, build
       with emsdk 4.0.23, and retain TCI as an opt-in fallback. The clean artifact
       passed Node, Chromium and host-native QEMU validation before deployment.
-- [ ] Second machine on the page: NetWinder (model already boots; has PCI + Tulip).
+- [x] **Second machine on the page: NetWinder.** The selector swaps the complete
+      QEMU board and only exposes compatible kernel modules. Its serial-only
+      presentation disables the RISC PC monitor/input/floppy paths while keeping
+      the common VT220 and optional IDE bay. `zImage-netwinder` was built from
+      the public Linux pin with strict ARMv4 GCC 8 and a recorded
+      `netwinder_defconfig`-derived config. Native QEMU, Node/Wasm and the full
+      Chromium gate all reached BusyBox; the latter requires DC21285 Footbridge
+      PCI, `pata_sl82c105`, Digital DS21142/43 Tulip, the prompt before input and
+      an `armv4l` reply. This remains on the non-deployed `netwinder-web` branch;
+      the public `main` site remains RISC-PC-only.
 - [x] Explicitly **out of scope**: an automatic kernel-version badge and CI
       mainline watcher. The selector names the exact kernels that are actually
       shipped; kernel updates remain deliberate local GCC 8 builds followed by

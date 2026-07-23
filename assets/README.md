@@ -9,6 +9,8 @@ this file names the public source it was built from.**
 | `zImage.config` | exact kernel config used for `zImage` | same commit, `rpc_defconfig`-derived | GPL-2.0 |
 | `zImage-7.1.4` | Linux 7.1.4 stable for `ARCH_RPC`, md5 `e0ef1cbbfecb652ce6a3712d742fb624` | kernel.org stable commit [`7a5cef0db4795d9d453a12e0f61b5b7634fc4d40`](https://git.kernel.org/pub/scm/linux/kernel/git/stable/linux.git/commit/?id=7a5cef0db4795d9d453a12e0f61b5b7634fc4d40) plus only upstream commit [`470ea955a18c`](https://git.kernel.org/pub/scm/linux/kernel/git/torvalds/linux.git/commit/?id=470ea955a18c76eeb10ca11ffcb2fe923bfc5515), which fixes the RiscPC ARM zImage build — gcc-8 build and boot-verified | GPL-2.0 |
 | `zImage-7.1.4.config` | exact kernel config used for `zImage-7.1.4` | same source, seeded from `zImage.config` then normalized with `olddefconfig` | GPL-2.0 |
+| `zImage-netwinder` | Linux 7.2.0-rc4+ for `ARCH_NETWINDER` (Rebel NetWinder), md5 `2407809ed00e11d5e1df3ad1603bb10d` | same public `riscpc-emu` commit `36ea1cf6b8d1c802f4121a8032d4f5d58f5a8283`; clean `netwinder_defconfig` plus the initramfs options documented below, built with strict ARMv4 GCC 8.5.0. Native QEMU boot verified Footbridge PCI, SL82C105 IDE, onboard Tulip Ethernet and an interactive BusyBox shell. | GPL-2.0 |
+| `zImage-netwinder.config` | exact kernel config used for `zImage-netwinder` | same commit and build described above | GPL-2.0 |
 | `initramfs-busybox.cpio.gz` | BusyBox 1.38.0 userspace, static musl, strict ARMv4, md5 `6422c34f8371eda683ae6e023838d385` | [BusyBox 1.38.0](https://busybox.net/downloads/busybox-1.38.0.tar.bz2), source SHA-256 `34f9ea6ff8636f2c9241153b9114eefa9e65674a45318ae1ef95bb5f31c53bb2`; exact [`build/busybox-1.38.0.config`](../build/busybox-1.38.0.config), [`build/initramfs-init`](../build/initramfs-init), and deterministic [`build/build-initramfs.sh`](../build/build-initramfs.sh) / [`build/gen-initramfs.py`](../build/gen-initramfs.py) recipe. Built with GCC 8.5.0 + musl 1.2.6 from musl-cross-make commit [`227df8b99103`](https://github.com/richfelker/musl-cross-make/commit/227df8b99103f9c59f6570babf892978e293082f), using [`build/musl-cross-make-armv4.config`](../build/musl-cross-make-armv4.config) and [`build/musl-1.2.6-armv4.patch`](../build/musl-1.2.6-armv4.patch). | GPL-2.0 / MIT |
 | `qemu/qemu-system-arm.wasm` | the emulator, wasm64/native Wasm TCG, md5 `bf9fa53f1bfe0a34954622a6f43e90ce` | [kmehltretter82/qemu](https://github.com/kmehltretter82/qemu) branch `armv4-boards`, public commit [`6dbc661b54a3`](https://github.com/kmehltretter82/qemu/commit/6dbc661b54a3622761642fb761c4f0b676b4619a), built by `build/build-qemu.sh` with emsdk 4.0.23. The fork carries Kohei Tokunaga's 33-commit Wasm TCG v4 series while it is under upstream review. The RiscPC subtype models the fitted SMC FDC37C665 as an 82077AA-compatible controller rather than exposing the shared core's 82078-only commands. | GPL-2.0 |
 | `qemu/qemu-system-arm.js` | its Emscripten loader plus the browser display/input bridge and IDBFS support, md5 `53f361c5f22ca4d614903d4628aa7365` | same build; bridge source is `build/display-canvas.js` in this repository | GPL-2.0 |
@@ -57,9 +59,10 @@ Two clean builds must have the documented md5 above before updating the asset.
 ## Toolchain constraint (important)
 
 `ARCH_RPC` must be built with **gcc 6–8** (newer gcc silently degrades the
-config — the RiscPC bus cannot execute `strh`; see PLAN.md). Both shipped
-zImages were built with a gcc-8 strict-ARMv4 musl toolchain. **CI must never
-rebuild a kernel with a distro gcc.** Rebuild manually:
+config — the RiscPC bus cannot execute `strh`; see PLAN.md). Both shipped RISC
+PC zImages and the NetWinder zImage were built with a gcc-8 strict-ARMv4 musl
+toolchain. **CI must never rebuild a kernel with a distro gcc.** Rebuild the
+RISC PC images manually:
 
 ```sh
 make ARCH=arm CROSS_COMPILE=<armv4-gcc8-toolchain>- O=<builddir> olddefconfig zImage
@@ -74,10 +77,34 @@ the only backport: the stable image intentionally omits the three RiscPC
 runtime fixes in the current image. It reaches the shell while reproducing the
 known floppy teardown warning (`work still pending`).
 
+For NetWinder, start from the same public Linux commit and a clean output
+directory. The stock defconfig has the board, PCI, SL82C105 and Tulip drivers;
+the five explicit additions let this shared browser initramfs run as PID 1:
+
+```sh
+make ARCH=arm O=<builddir> netwinder_defconfig
+scripts/config --file <builddir>/.config \
+    -e BLK_DEV_INITRD -e RD_GZIP -e DEVTMPFS -e DEVTMPFS_MOUNT -e AEABI \
+    -d LOCALVERSION_AUTO
+make ARCH=arm CROSS_COMPILE=<armv4-gcc8-toolchain>- \
+    O=<builddir> olddefconfig zImage
+cp <builddir>/arch/arm/boot/zImage assets/zImage-netwinder
+cp <builddir>/.config assets/zImage-netwinder.config
+```
+
 Boot (native QEMU from the `qemu` submodule, branch `armv4-boards`):
 
 ```sh
 qemu-system-arm -M riscpc -kernel zImage -initrd initramfs-busybox.cpio.gz \
     -append 'console=tty0 console=ttyS0 rdinit=/init' -serial stdio \
     -drive file=floppy.img,format=raw,if=floppy,index=0
+```
+
+NetWinder (its three UARTs require two unused backends after the console):
+
+```sh
+qemu-system-arm -M netwinder -kernel zImage-netwinder \
+    -initrd initramfs-busybox.cpio.gz \
+    -append 'console=ttyS0 rdinit=/init' \
+    -serial stdio -serial null -serial null -display none
 ```

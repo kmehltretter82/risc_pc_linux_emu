@@ -289,6 +289,38 @@ Together with Finding #1 this suggests acorn32 has not been booted on
 real hardware in a long time; both are the kind of rot only an
 independent guest surfaces.
 
+**Finding #3 — resolved: a second upstream NetBSD boot-killer, exposed
+by our own faithful unaligned-access commit.** `sys/arch/arm/iomd/
+iomd_irq.S` opens `.rodata` with no alignment directive and emits
+
+    _C_LABEL(_intrnames):
+        .word _C_LABEL(intrnames)
+
+so the linker may place this pointer at an odd address — and does, in
+both the 9.4 (`0xf02f26ff`) and 10.1 release binaries. The C side
+(`iomd_irqhandler.c:66,181`) declares `extern char *_intrnames` and
+word-loads it. On ARMv4/SA-110 an unaligned `ldr` *rotates* the aligned
+word (9.4: `0x03002170 ror 24 = 0x00217003`, matching the trapframe
+register-for-register), so `irq_claim()` strlcpy's the handler name
+through a garbage low pointer and the kernel data-aborts at the first
+`irq_claim` that passes an `ih_name` — `"fdc"` here, but on any config
+at latest `cpu_initclocks()`'s `"tmr0 hard clk"`. So on real silicon
+9.3+ dies *before* even reaching Finding #2's statclock panic: two
+stacked boot-killers. Fix: `.align 2` before `_intrnames` (and the
+name table is written through into `.rodata`, a second wart).
+
+The bug is invisible on emulators with post-v6 unaligned semantics —
+our pre-`4a71ae6e49` builds included — which is presumably how it
+shipped. The faithful pre-v6 rotation commit surfaced it immediately.
+
+**Release survey** (all on `-M riscpc`): 7.2 dies earliest — a data
+abort in the SA-110 cache-clean during `initarm` console init (DFAR
+just past the clean region; unattributed, kernsize rounding disproven
+as the cause). acorn32 then *vanished from releases 8.0–9.2* and
+returned in 9.3; every kernel since (9.3, 9.4, 10.0, 10.1) carries
+Findings #2 and #3. No NetBSD release of the last decade reaches
+userland on this hardware.
+
 ### 2b. VIDC20 framebuffer
 
 - [x] New `hw/display/vidc20.c`: single write port at `0x03400000`, register

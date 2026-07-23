@@ -313,6 +313,22 @@ The bug is invisible on emulators with post-v6 unaligned semantics —
 our pre-`4a71ae6e49` builds included — which is presumably how it
 shipped. The faithful pre-v6 rotation commit surfaced it immediately.
 
+**Both fixes verified end-to-end (2026-07-23).** Cross-built 10.1 from
+the official source sets (`~/linux-work/netbsd-build/`, host gcc 15
+needed `-std=gnu11` wrappers for the C23 K&R breakage in texinfo/GMP)
+as `GENERIC_DEBUG` (+`DIAGNOSTIC`, `DEBUG`, full symbols) with exactly
+two one-line changes: `.p2align 2` before `_intrnames` and a zero guard
+in `setstatclockrate()`. Result on `-M riscpc`: clock ticks, fdc
+attaches, `wd0 <QEMU HARDDISK>` found by NetBSD's own wdc driver,
+`root device: wd0a` answered through the KART keyboard, FFS root
+mounted from the official installer ramdisk, `/sbin/init` execs and
+**sysinst runs** — full userland on hardware where every release since
+9.3 dies before the first clock tick. Incidentals: `wd33c93.c` does not
+compile with `options DEBUG` (undeclared `i` in a debug printf —
+nobody builds this port with DEBUG either), and "no TOD clock present"
+because we model no RTC. The debug kernel with symbols is
+`netbsd-build/usr/obj/sys/arch/acorn32/compile/GENERIC_DEBUG/netbsd`.
+
 **Release survey** (all on `-M riscpc`): 7.2 dies earliest — a data
 abort in the SA-110 cache-clean during `initarm` console init (DFAR
 just past the clean region; unattributed, kernsize rounding disproven

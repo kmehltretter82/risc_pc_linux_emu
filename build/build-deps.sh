@@ -13,7 +13,7 @@ FFI_VERSION=3.5.2
 MESON_VERSION=1.5.0
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
-DEPS="$HERE/deps"
+DEPS="${WASM_DEPS_DIR:-$HERE/deps}"
 SRC="$DEPS/src"
 mkdir -p "$DEPS" "$SRC"
 
@@ -24,6 +24,16 @@ if [ ! -x "$DEPS/venv/bin/meson" ]; then
 fi
 
 source "$HERE/env.sh"
+
+DEPS_TOOLCHAIN_STAMP="$DEPS/.emscripten-version"
+if [ -d "$TARGET" ] &&
+        [ -n "$(find "$TARGET" -mindepth 1 -maxdepth 1 -print -quit)" ] &&
+        { [ ! -f "$DEPS_TOOLCHAIN_STAMP" ] ||
+          [ "$(cat "$DEPS_TOOLCHAIN_STAMP")" != "$QEMU_EMSDK_VERSION" ]; }; then
+    echo "Existing dependencies were not built with Emscripten $QEMU_EMSDK_VERSION." >&2
+    echo "Use a fresh WASM_DEPS_DIR (or remove the old ignored build/deps tree)." >&2
+    exit 1
+fi
 mkdir -p "$TARGET"
 
 cross_meson() {  # $1 = output file; CFLAGS/LDFLAGS from env
@@ -128,4 +138,5 @@ EOT
      meson install -C _build)
 fi
 
-echo "=== deps done: $TARGET"
+printf '%s\n' "$QEMU_EMSDK_VERSION" > "$DEPS_TOOLCHAIN_STAMP"
+echo "=== deps done: $TARGET (Emscripten $QEMU_EMSDK_VERSION)"

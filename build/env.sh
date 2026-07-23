@@ -1,6 +1,6 @@
 # Build environment for the Emscripten wasm64 QEMU build.
 # Mirrors qemu/tests/docker/dockerfiles/emsdk-wasm64-cross.docker
-# (emsdk 4.0.10, meson 1.5.0; deps: zlib 1.3.2, libffi 3.5.2, pixman 0.44.2,
+# (emsdk 4.0.23, meson 1.5.0; deps: zlib 1.3.2, libffi 3.5.2, pixman 0.44.2,
 #  glib 2.84.0). Source this file; do not execute it.
 
 # Parallelism. Default to cores, but cap by memory: clang and wasm-ld are
@@ -17,10 +17,20 @@ export JOBS
 
 EMSDK_ROOT="${EMSDK_ROOT:-$HOME/linux-work/emsdk}"
 BUILD_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-DEPS="$BUILD_DIR/deps"
+DEPS="${WASM_DEPS_DIR:-$BUILD_DIR/deps}"
 export TARGET="$DEPS/target"
 
 source "$EMSDK_ROOT/emsdk_env.sh" >/dev/null
+
+QEMU_EMSDK_VERSION=4.0.23
+export QEMU_EMSDK_VERSION
+_emsdk_version_file="$EMSDK_ROOT/upstream/emscripten/emscripten-version.txt"
+_emsdk_version="$(tr -d '"' < "$_emsdk_version_file")"
+if [ "$_emsdk_version" != "$QEMU_EMSDK_VERSION" ]; then
+    echo "Emscripten $QEMU_EMSDK_VERSION is required; found $_emsdk_version" >&2
+    return 1 2>/dev/null || exit 1
+fi
+
 export PATH="$DEPS/venv/bin:$PATH"
 
 export CPATH="$TARGET/include"

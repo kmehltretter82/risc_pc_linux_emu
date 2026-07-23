@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: GPL-2.0
 // Milestone A harness: boot the wasm QEMU under node, outside any browser.
 // Usage: node build/run-node.mjs [assets-dir] [kernel-file]
+// Set QEMU_BUILD_OUT to test a side build without replacing build/out.
+// Set QEMU_BOOT_TEST=1 for a non-interactive BusyBox + uname smoke test.
 //
 // The generated loader is an ES module exporting a factory, so this is an
 // .mjs and imports it. Assets are read from disk and written into MEMFS,
@@ -16,7 +18,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 
 const assetsDir = path.resolve(process.argv[2] || path.join(here, "..", "assets"));
 const kernelFile = process.argv[3] || "zImage";
-const qemuJs = path.join(here, "out", "qemu-system-arm.js");
+const qemuBuildOut = path.resolve(process.env.QEMU_BUILD_OUT || path.join(here, "out"));
+const qemuJs = path.join(qemuBuildOut, "qemu-system-arm.js");
 
 // stdin-proxy.js pulls bytes from the same main-thread queue used by the
 // browser page. Module.stdout bypasses Emscripten's line-buffered default so
@@ -24,6 +27,34 @@ const qemuJs = path.join(here, "out", "qemu-system-arm.js");
 globalThis.__rpcStdin = [];
 if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.on("data", (data) => globalThis.__rpcStdin.push(...data));
+
+const bootTest = process.env.QEMU_BOOT_TEST === "1";
+const bootTimeout = Number(process.env.QEMU_BOOT_TIMEOUT || 120) * 1000;
+let bootOutput = "";
+let probeSent = false;
+let bootPassed = false;
+const bootTimer = bootTest ? setTimeout(() => {
+  process.stderr.write("\n[harness] FAIL: guest did not answer uname -m\n");
+  process.exit(1);
+}, bootTimeout) : null;
+
+function stdout(byte) {
+  process.stdout.write(Buffer.from([byte]));
+  if (!bootTest || bootPassed) return;
+
+  bootOutput = (bootOutput + String.fromCharCode(byte)).slice(-262144);
+  if (!probeSent && bootOutput.includes("BusyBox on ARMv4")
+      && bootOutput.endsWith("# ")) {
+    globalThis.__rpcStdin.push(...Buffer.from("uname -m\n"));
+    probeSent = true;
+  }
+  if (probeSent && /[\r\n]armv4l[\r\n]/.test(bootOutput)) {
+    bootPassed = true;
+    clearTimeout(bootTimer);
+    process.stderr.write("\n[harness] PASS: BusyBox answered armv4l\n");
+    setImmediate(() => process.exit(0));
+  }
+}
 
 const moduleArg = {
   arguments: [
@@ -34,7 +65,7 @@ const moduleArg = {
     "-serial", "stdio",
     "-display", "none",
   ],
-  stdout: (byte) => process.stdout.write(Buffer.from([byte])),
+  stdout,
   preRun: [
     () => {
       moduleArg.FS.mkdir("/assets");
@@ -51,6 +82,6 @@ const moduleArg = {
   },
 };
 
-process.stderr.write(`[harness] assets=${assetsDir} kernel=${kernelFile}\n`);
+process.stderr.write(`[harness] qemu=${qemuJs} assets=${assetsDir} kernel=${kernelFile}\n`);
 const createQemu = (await import(pathToFileURL(qemuJs).href)).default;
 await createQemu(moduleArg);

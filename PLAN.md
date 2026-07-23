@@ -28,11 +28,13 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 
 Prior art to lean on: **ktock/qemu-wasm** (Emscripten build recipes, Dockerfiles for
 dependency cross-builds, browser glue examples). Upstream QEMU has experimental
-Emscripten host support since 10.1 (TCI interpreter for 32-bit guests; the true Wasm
-TCG backend is still in review upstream — a future free speed-up).
+Emscripten host support since 10.1. The fork now carries Kohei Tokunaga's 33-commit
+Wasm TCG v4 series while upstream review continues, replacing the TCI interpreter
+without making the site depend on the upstream merge schedule.
 
-Performance sanity check: TCI-in-browser is slow by modern standards but the target
-is a 30–40 MHz ARM610. The emulation will outrun the original hardware.
+Performance sanity check: the native Wasm TCG build boots much faster than the old
+TCI build in both Node and Chromium and still outruns the original 30–40 MHz target.
+Boot-time BogoMIPS is only a sanity signal, not a controlled benchmark.
 
 ---
 
@@ -80,12 +82,12 @@ quadrature mouse.
     submodule pins before CI is allowed to boot or deploy the site.
   - [x] Linux `riscpc-emu` is public at the exact pinned/provenance commit
         `36ea1cf6b8d1c802f4121a8032d4f5d58f5a8283`.
-  - [x] QEMU commit `0f0e03dca12fc704c4491eb8fe7dc505a9c4d55c` is public on
-        `armv4-boards`. On 2026-07-22 the seven original commits were rebased
-        onto the public, patch-equivalent 11-commit base and pushed as a
-        fast-forward. The controller-identity follow-up was then built and
-        verified from its exact public commit before replacing the shipped
-        Wasm binary.
+  - [x] QEMU commit `6dbc661b54a3622761642fb761c4f0b676b4619a` is public on
+        `armv4-boards`. It contains the published RiscPC hardware work and
+        Kohei Tokunaga's 33-commit Wasm TCG v4 series, preserving authorship,
+        sign-offs and message IDs. The exact commit passed host-native build
+        and RiscPC boot, Node/Wasm boot, and the complete Chromium regression
+        before replacing the shipped emulator.
 - [x] Layout:
   ```
   frontend/          # index.html, css/svg art, xterm glue, coi-serviceworker
@@ -96,7 +98,7 @@ quadrature mouse.
   PLAN.md            # this file
   ```
 - [x] Commit the two prebuilt kernels (about 3.6 MB each), 0.8 MB BusyBox
-      initramfs and 43 MB Wasm emulator as plain files, all under Pages/repo
+      initramfs and 17.2 MB Wasm emulator as plain files, all under Pages/repo
       limits. Writable IDE/floppy images are visitor-supplied instead of a
       committed 32 MB factory disk. Kernels are built **locally** with the gcc-8
       toolchain; CI must not try to build them (wrong gcc = silently degraded config).
@@ -109,9 +111,10 @@ serial console. dmesg scrolls, `login:` appears, user logs in as root. The user'
 physical keyboard types over the serial line when the terminal has focus.
 
 1. **Deps + QEMU wasm build** (the bulk of the effort — toolchain fighting):
-   - emsdk pinned in `build/Dockerfile`; cross-compile glib/zlib/libffi/pixman
+   - emsdk pinned in `build/env.sh`; cross-compile glib/zlib/libffi/pixman
      following ktock's recipes.
-   - `configure --target-list=arm-softmmu` for Emscripten host, TCI backend;
+   - `configure --target-list=arm-softmmu` for Emscripten host, native Wasm
+     TCG backend (`QEMU_TCG_BACKEND=tci` retains a diagnostic fallback);
      trim devices/features to shrink the .wasm.
    - Milestone A: our fork boots the rpc kernel under `node` (Emscripten's
      node runtime) before any browser work.
@@ -131,12 +134,12 @@ physical keyboard types over the serial line when the terminal has focus.
 4. **Definition of done**: public URL, cold load → `login:` , interactive shell,
    works in Chrome + Firefox (Safari best-effort).
 
-**Status (2026-07-21): done.** The guest boots to an interactive shell in
+**Status (2026-07-23): done.** The guest boots to an interactive shell in
 Chromium — `build/test-browser.py` presses POWER, waits for the BusyBox banner,
 then types `uname -m` and asserts the guest answers `armv4l`; that is the gate
 CI enforces before deploying. `build/run-node.mjs` is the same check headless.
-Built: emsdk 4.0.10 + deps (`build/build-deps.sh`), wasm64/TCI QEMU
-(`build/build-qemu.sh`, 43 MB `.wasm`), the RiscPC/VT220 scene,
+Built: emsdk 4.0.23 + clean deps (`build/build-deps.sh`), wasm64/native-Wasm-TCG
+QEMU (`build/build-qemu.sh`, 17.2 MB `.wasm`), the RiscPC/VT220 scene,
 coi-serviceworker, `build/serve.py` for local COOP/COEP.
 
 Three things worth knowing before touching the build:
@@ -397,7 +400,10 @@ independent guest surfaces.
       no horizontal overflow.
 - [ ] Upstream the machine models (riscpc, netwinder, acorn-iomd, dc21285,
       sl82c105) with `tests/functional/` entries; collie is the precedent.
-- [ ] Adopt the upstream Wasm TCG backend when merged (free speed-up over TCI).
+- [x] Adopt the native Wasm TCG backend without waiting for the upstream merge:
+      carry Kohei Tokunaga's complete v4 series in the public QEMU fork, build
+      with emsdk 4.0.23, and retain TCI as an opt-in fallback. The clean artifact
+      passed Node, Chromium and host-native QEMU validation before deployment.
 - [ ] Second machine on the page: NetWinder (model already boots; has PCI + Tulip).
 - [x] Explicitly **out of scope**: an automatic kernel-version badge and CI
       mainline watcher. The selector names the exact kernels that are actually
@@ -442,7 +448,7 @@ public commit it was built from. The site footer links every source repo.
 | emsdk dependency builds are painful | ktock/qemu-wasm Dockerfiles as reference; pin emsdk version; Milestone A under node isolates browser issues |
 | Pages can't set COOP/COEP headers | coi-serviceworker shim (established pattern) |
 | Kernel needs gcc 6–8 | kernel is a prebuilt committed artifact; CI never builds it; CONFIG-LOST check before updating the artifact |
-| TCI too slow (unlikely) | target is 30–40 MHz ARM610; if needed, wasm TCG backend later |
+| Native Wasm TCG series is not merged upstream yet | carry the reviewed v4 series in the public pinned fork; retain `QEMU_TCG_BACKEND=tci` as a build fallback |
 | Safari (no wasm64 / isolation quirks) | build wasm32; Chrome+Firefox are the supported browsers, Safari best-effort |
 | RISC OS ROM copyright | avoided by design: direct `-kernel` boot, authentic to NeTTrom-era Linux bring-up |
 

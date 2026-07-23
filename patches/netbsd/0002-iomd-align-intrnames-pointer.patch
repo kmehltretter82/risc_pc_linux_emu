@@ -1,0 +1,11 @@
+diff --git a/sys/arch/arm/iomd/iomd_irq.S b/sys/arch/arm/iomd/iomd_irq.S
+--- a/sys/arch/arm/iomd/iomd_irq.S
++++ b/sys/arch/arm/iomd/iomd_irq.S
+@@ -409,6 +409,7 @@ skip_setting_extended_DMA_mask:
+ /* These symbols are used by vmstat */
+ 
+ 	.section .rodata
++	.p2align 2
+ 
+ 	.global	_C_LABEL(_intrnames)
+ _C_LABEL(_intrnames):

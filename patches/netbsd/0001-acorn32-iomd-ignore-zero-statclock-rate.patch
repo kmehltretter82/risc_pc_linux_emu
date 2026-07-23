@@ -1,0 +1,17 @@
+diff --git a/sys/arch/arm/iomd/iomd_clock.c b/sys/arch/arm/iomd/iomd_clock.c
+--- a/sys/arch/arm/iomd/iomd_clock.c
++++ b/sys/arch/arm/iomd/iomd_clock.c
+@@ -215,6 +215,13 @@ setstatclockrate(int newhz)
+ {
+ 	int count;
+     
++	/*
++	 * kern_clock.c passes zero when there is no separate statistics
++	 * clock.  In that case statclock runs from hardclock instead.
++	 */
++	if (newhz == 0)
++		return;
++
+ 	count = TIMER_FREQUENCY / newhz;
+ 
+ 	aprint_normal("Setting statclock to %dHz (%d ticks)\n", newhz, count);

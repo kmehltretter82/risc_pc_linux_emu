@@ -17,11 +17,11 @@ No server, no plugins. Faster than the real machine, in a browser tab.
 | Toolchain | `~/linux-work/armv4-tc-gcc8` | strict-ARMv4 GCC 8.5.0/musl 1.2.6 toolchain; reproducible config and ARMv4 patch are in `build/` |
 | Rootfs | `build/busybox-1.38.0.config`, `build/build-initramfs.sh` | deterministic static BusyBox initramfs; no privileged device-node setup required |
 | Boot convention | in the fork's `hw/arm/boot` changes | old-param/NeTTrom-era parameter block; direct `-kernel` boot — **no RISC OS ROM needed** (sidesteps copyright entirely) |
-| Test matrix | `~/linux-work/armv4-boards-test.sh` | 7/7 boot matrix incl. riscpc; use before every deploy |
+| Test matrix | `~/linux-work/armv4-boards-test.sh` | 8/8 boot matrix incl. RiscPC serial, framebuffer and IDE-root boots; use before every deploy |
 | Guest drivers in mainline 7.2 | `acornfb` (VIDC20 fb), `rpcmouse` (quadrature), `rpckbd` (KART serio) | All three present. `rpckbd` lives in **`drivers/input/serio/`**, not `drivers/input/keyboard/`, under `CONFIG_SERIO_RPCKBD`; `atkbd` binds on top of it. The booted kernel already probes it and reports `keyboard reset failed on rpckbd/serio0` — so a KART model has a waiting client |
 | VIDC20 datasheet | `~/linux-work/docs/vidc20-datasheet.pdf` | Acorn/GEC Plessey, Feb 1995, 69 pp, **has a text layer**. §4.1 is the register allocation; its §6.0 on p33 is the one `mach/acornfb.h` cites. **This is the specification** |
 | RPCEmu | `~/linux-work/rpcemu/src/vidc20.c` | Independent implementation written against RISC OS. Documents field masks (`HDSR/HDER & 0x3ffe`, `VDSR/VDER & 0x1fff`) and rejects writes with reserved bits set |
-| NetBSD/acorn32 | `~/linux-work/netbsd-acorn32/` | 10.1 GENERIC kernel (ELF32 ARM, entry 0xf0000000) + `vidc20config.c`, `vidc.h`, `bootconfig.h`, `rpc_machdep.c`. Second independent VIDC20 driver, **with a serial console** |
+| NetBSD/acorn32 | `~/linux-work/netbsd-acorn32/` | 10.1 GENERIC kernel (ELF32 ARM, entry 0xf0000000) + `vidc20config.c`, `vidc.h`, `bootconfig.h`, `rpc_machdep.c`. Second independent VIDC20 driver; the tested GENERIC console is framebuffer wscons |
 | Debian RiscPC kernels | `~/linux-work/armv4-images/riscpc/` | 2.2.19 / 2.4.16 / 2.4.27, `CONFIG_FB_ACORN=y`, `CONFIG_RPCMOUSE=y`. Frozen 2004 artifacts — cannot have been influenced by this emulator |
 | SA-110 datasheet | `~/linux-work/docs/sa110-datasheet.pdf` | DEC StrongARM Data Sheet V2.0, 64 pp, **has a text layer**. §5.1 p14 is the CP15 access rules, §5.2 p15 Table 3 the register set. Settles Finding #1 |
 | RiscPC TRM | `~/linux-work/docs/riscpc-trm.pdf` | 112 pp, but a **scan** — no usable text layer. Needs poppler to render pages as images |
@@ -185,8 +185,9 @@ Debian 2.2/2.4 (frozen 2004 binaries) → **NetBSD/acorn32** (independent driver
 
 ### 2a. Boot NetBSD/acorn32 — the primary target
 
-NetBSD is target #1 because it is an independent VIDC20 driver that still
-prints to `ttyS0`. RISC OS is *not* a prerequisite — `!BtNetBSD` is only a
+NetBSD is target #1 because it has an independent VIDC20 driver. The initial
+serial-console assumption proved false: the tested GENERIC kernel selects
+framebuffer wscons. RISC OS is *not* a prerequisite — `!BtNetBSD` is only a
 bootloader — but it is **not** a plain `-kernel` load either.
 
 **The kernel must be entered with the MMU already on.** `start` (0xf0000000)
@@ -213,10 +214,20 @@ already running mapped. QEMU must therefore supply the initial mapping:
 Estimate: days, not hours. This is the riskiest item in Phase 2 — it is the
 one piece with no working reference in-tree.
 
-**Status: done.** NetBSD 10.1 GENERIC prints its banner, sizes memory
-(65536 KB / 58488 KB avail) and attaches `mainbus0`. Its console is
-`vidcvideo`, not serial — the framebuffer is the only output, so read it
-with a `screendump` or by dumping `display_phys`.
+**Status: done, including userland.** NetBSD 10.1 GENERIC prints its banner,
+attaches the RiscPC SMC controller and a 384 MiB IDE disk, mounts FFS on
+`wd0a`, executes `/sbin/init`, and reaches a root shell. With the loader's
+top 4 MiB reserved, NetBSD sees 60 MiB of allocatable DRAM. The native
+regression captures a shell marker and `uname -p` result `earmv4` over the
+UART; `uname -m` reports `acorn32`.
+
+`build/build-netbsd-userland.sh` verifies the official 10.1 source and acorn32
+`base`, `etc`, and `rescue` sets by SHA-512, applies the two guest patches,
+uses NetBSD's reproducible-build mode for GENERIC, and constructs an
+unprivileged 384 MiB FFSv1 image. `build/test-netbsd-userland.py` boots those
+artifacts through a disposable overlay and machine-checks the userland shell.
+The image is a local regression artifact, not a 384 MiB addition to the Pages
+site.
 
 **Finding #1 — resolved: this is a QEMU bug, not a NetBSD one.**
 `cpu_attach` drops to `ddb` on an undefined instruction:
@@ -280,14 +291,33 @@ either — worth spelling out, because "maybe RISC OS or !BtNetBSD sets
 Our IOMD timers work — Linux drives timer0 happily. Real SA-110 silicon
 would panic identically on the first tick.
 
-Candidate fix for a Phase 4 patch — either guard `setstatclockrate()`
-against 0, or have acorn32 set `stathz` and claim IRQ_TIMER1 properly.
-The first is smaller and matches the generic code's assumption that a
-port without a separate stat clock may still have the rate set.
+The recorded Phase 4 patch guards `setstatclockrate()` against zero. It is the
+smaller fix and matches the generic code's assumption that a port without a
+separate stat clock may still have the rate set.
 
 Together with Finding #1 this suggests acorn32 has not been booted on
 real hardware in a long time; both are the kind of rot only an
 independent guest surfaces.
+
+**Finding #3 — resolved: QEMU and NetBSD each had an alignment bug.**
+Before Armv6, an unaligned word LDR with alignment checking disabled reads
+from `Align(address, 4)` and rotates right by `8 * address<1:0>`; STR ignores
+the low two address bits. QEMU formerly assembled an ordinary unaligned word.
+That broke NetBSD's deliberate `insw16()` ATA idiom once IDE userland was
+attached. Implementing the architectural SA-110 behaviour fixed ATA reads but
+also exposed an unrelated NetBSD bug: `_intrnames` was emitted at an address
+ending in `...4b`, so `irq_claim()` rotated its pointer and faulted on the
+first IDE interrupt. The QEMU translator now implements the legacy access
+semantics and `0002-iomd-align-intrnames-pointer.patch` gives the pointer its
+required four-byte alignment.
+
+**Finding #4 — resolved: the QEMU direct loader advertised live framebuffer
+memory as free DRAM.** The loader placed its 2 MiB framebuffer in a top-of-RAM
+scratch region but described all 64 MiB in bootconfig `dram[]`. NetBSD's VM
+allocator eventually reused those pages, wscons pixels overwrote kernel lock
+state, and `/sbin/init` faulted. The loader now excludes the complete top
+4 MiB scratch region from allocatable DRAM while retaining its identity
+mapping. That is the change which made sustained userland execution reliable.
 
 ### 2b. VIDC20 framebuffer
 
@@ -421,15 +451,16 @@ independent guest surfaces.
       shipped; kernel updates remain deliberate local GCC 8 builds followed by
       the full boot/input/storage gate.
 - [ ] **Other guest OSes** (the name says Linux, but the hardware doesn't care):
-  - **RISC OS 5.30** — RISC OS Open relicensed RISC OS 5 under Apache 2.0, so a
+  - [ ] **RISC OS 5.30** — RISC OS Open relicensed RISC OS 5 under Apache 2.0, so a
     legally redistributable ROM exists (RPCEmu ships one). Needs ROM-at-reset boot
     support plus much higher hardware fidelity than Linux does (full VIDC20, IOMD
     timers/keyboard, podule probing). A real project of its own — Phase 2 hardware
     is the prerequisite. The era-authentic RISC OS 3.5–3.7 ROMs remain proprietary.
-  - **NetBSD/acorn32** — *moved up to Phase 2a as the primary target.* Not
-    historic: acorn32 ships in the current **NetBSD 10.1** release. Remaining
-    Phase 4 work is only userland (install sets, disc images) once it boots.
-  - **Debian sarge (2004)** — 2.4.27-riscpc kernels + installer already collected in
+  - [x] **NetBSD/acorn32 10.1 userland** — official source and binary sets are
+    checksum-pinned; the two-patch GENERIC kernel mounts the reproducible FFSv1
+    image on `wd0a`, executes `/sbin/init`, and passes the automated
+    `earmv4` root-shell gate.
+  - [ ] **Debian sarge (2004)** — 2.4.27-riscpc kernels + installer already collected in
     `~/linux-work/armv4-images/riscpc/`; "install Debian from 2004 in your browser"
     is a fun museum piece and needs no new hardware beyond Phase 3 storage.
 
